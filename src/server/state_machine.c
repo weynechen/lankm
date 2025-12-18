@@ -75,16 +75,19 @@ int process_event(const InputEvent *event, Message *msg) {
                 // Map Linux key codes to our protocol
                 // Left mouse button
                 if (event->code == BTN_LEFT) {
+                    printf("Server: BTN_LEFT %s\n", event->value ? "DOWN" : "UP");
                     msg_mouse_button(msg, 1, event->value);
                     return 1;
                 }
                 // Right mouse button
                 else if (event->code == BTN_RIGHT) {
+                    printf("Server: BTN_RIGHT %s\n", event->value ? "DOWN" : "UP");
                     msg_mouse_button(msg, 2, event->value);
                     return 1;
                 }
                 // Middle mouse button
                 else if (event->code == BTN_MIDDLE) {
+                    printf("Server: BTN_MIDDLE %s\n", event->value ? "DOWN" : "UP");
                     msg_mouse_button(msg, 3, event->value);
                     return 1;
                 }
@@ -92,6 +95,10 @@ int process_event(const InputEvent *event, Message *msg) {
                 else if (event->code < 256) {
                     msg_key_event(msg, event->code, event->value);
                     return 1;
+                }
+                // Debug unknown buttons
+                else {
+                    printf("Server: Unknown EV_KEY code=%d value=%d\n", event->code, event->value);
                 }
             }
 

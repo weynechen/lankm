@@ -63,29 +63,44 @@ void inject_mouse_move(int dx, int dy) {
 }
 
 void inject_mouse_button(uint8_t button, uint8_t state) {
-    INPUT input = {0};
-    input.type = INPUT_MOUSE;
-    input.mi.dx = 0;
-    input.mi.dy = 0;
-    input.mi.mouseData = 0;
-    input.mi.time = 0;
-    input.mi.dwExtraInfo = 0;
+    // Use array to send both sync and button as atomic operation
+    // Modern Windows expects events to be sent together for taskbar/Start menu
 
-    switch (button) {
-        case 1: // Left button
-            input.mi.dwFlags = (state == 1) ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP;
-            break;
-        case 2: // Right button
-            input.mi.dwFlags = (state == 1) ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP;
-            break;
-        case 3: // Middle button
-            input.mi.dwFlags = (state == 1) ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP;
-            break;
-        default:
-            return; // Unsupported button
+    if (state == 1) {
+        // DOWN event - prepare array with sync and down
+        INPUT inputs[2] = {0};
+
+        // First: sync move (0,0) to ensure cursor is ready
+        inputs[0].type = INPUT_MOUSE;
+        inputs[0].mi.dx = 0;
+        inputs[0].mi.dy = 0;
+        inputs[0].mi.dwFlags = MOUSEEVENTF_MOVE;
+
+        // Second: actual button down
+        inputs[1].type = INPUT_MOUSE;
+        inputs[1].mi.dx = 0;
+        inputs[1].mi.dy = 0;
+        inputs[1].mi.dwFlags = (button == 1) ? MOUSEEVENTF_LEFTDOWN :
+                                (button == 2) ? MOUSEEVENTF_RIGHTDOWN :
+                                MOUSEEVENTF_MIDDLEDOWN;
+
+        SendInput(2, inputs, sizeof(INPUT));
+
+    } else {
+        // UP event - this must happen separately to complete the click
+        INPUT input = {0};
+        input.type = INPUT_MOUSE;
+        input.mi.dx = 0;
+        input.mi.dy = 0;
+
+        // For taskbar to register click properly:
+        // UP event has no move flag, just the button flag
+        input.mi.dwFlags = (button == 1) ? MOUSEEVENTF_LEFTUP :
+                          (button == 2) ? MOUSEEVENTF_RIGHTUP :
+                          MOUSEEVENTF_MIDDLEUP;
+
+        SendInput(1, &input, sizeof(INPUT));
     }
-
-    SendInput(1, &input, sizeof(INPUT));
 }
 
 void inject_key_event(uint16_t vk_code, uint8_t state) {

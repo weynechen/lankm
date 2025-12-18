@@ -134,9 +134,10 @@ int main(int argc, char *argv[]) {
 
         if (result > 0 && FD_ISSET(sock_fd, &read_fds)) {
             // Data is available, receive it
-            // Try to receive multiple messages in batch for efficiency
+            // Try to receive multiple messages in batch, BUT clicks are special
             int batch_count = 0;
-            while (batch_count < 10) { // Process up to 10 messages per iteration
+
+            while (batch_count < 25) { // Max events per iteration
                 int bytes_received = recv(sock_fd, (char*)&msg, sizeof(Message), 0);
 
                 if (bytes_received <= 0) {
@@ -167,11 +168,24 @@ int main(int argc, char *argv[]) {
                 // Process message based on type
                 switch (msg.type) {
                     case MSG_MOUSE_MOVE:
+                        // DEBUG: printf("Mouse move: dx=%d, dy=%d\n", msg.a, msg.b);
                         inject_mouse_move(msg.a, msg.b);
                         break;
 
                     case MSG_MOUSE_BUTTON:
+                        // DEBUG: Show mouse button activity to help diagnose
+                        {
+                            const char* btn_name = "UNKNOWN";
+                            const char* state_name = msg.b ? "DOWN" : "UP";
+                            if (msg.a == 1) btn_name = "LEFT";
+                            else if (msg.a == 2) btn_name = "RIGHT";
+                            else if (msg.a == 3) btn_name = "MIDDLE";
+                            printf("Client: Mouse %s %s\n", btn_name, state_name);
+                        }
                         inject_mouse_button(msg.a, msg.b);
+                        // BREAK OUT of batch loop - this click needs immediate focus
+                        // Don't process more pending (possibly stale) move events
+                        batch_count = 9999; // Force exit
                         break;
 
                     case MSG_KEY_EVENT:
@@ -181,6 +195,8 @@ int main(int argc, char *argv[]) {
                                 inject_key_event(vk_code, msg.b);
                             }
                         }
+                        // Key events should also exit batch to prioritize responsiveness
+                        batch_count = 9999;
                         break;
 
                     case MSG_SWITCH:
