@@ -6,8 +6,7 @@
 
 static ControlState current_state = STATE_LOCAL;
 
-// Key codes for toggle - using F12 to avoid Alt key issues
-#define KEY_F12 88
+// Note: KEY_PAUSE is used for mode switching - defined in linux/input.h as 119
 
 // Linux input event codes for mouse wheel
 #define REL_WHEEL       0x08
@@ -16,7 +15,7 @@ static ControlState current_state = STATE_LOCAL;
 void init_state_machine(void) {
     current_state = STATE_LOCAL;
     printf("State machine initialized in LOCAL mode\n");
-    printf("Press F12 to toggle between LOCAL and REMOTE control\n");
+    printf("Press PAUSE/Break to toggle between LOCAL and REMOTE control\n");
 }
 
 // 静态变量用于鼠标移动的累积
@@ -53,14 +52,14 @@ int process_event(const InputEvent *event, Message *msg) {
         return 0;
     }
 
-    // Handle F12 as toggle - 处理按下和释放两种事件
-    if (event->type == EV_KEY && event->code == KEY_F12) {
+    // Handle PAUSE/Break as toggle - 处理按下和释放两种事件
+    if (event->type == EV_KEY && event->code == KEY_PAUSE) {
         // 只在按下时处理（value == 1）
         if (event->value == 1) {
             // 在切换模式前发送待处理的鼠标移动
             // int sent = send_pending_movement(msg);
 
-            printf("F12 pressed, current_state=%d\n", current_state);
+            printf("PAUSE pressed, current_state=%d\n", current_state);
             if (current_state == STATE_LOCAL) {
                 // Switch to remote control
                 current_state = STATE_REMOTE;
@@ -77,7 +76,7 @@ int process_event(const InputEvent *event, Message *msg) {
                 return 1; // Always return 1 to indicate message was prepared
             }
         }
-        // F12键的所有事件（包括释放）都返回1，表示已处理，不再传递
+        // PAUSE键的所有事件（包括释放）都返回1，表示已处理，不再传递
         return 1;
     }
 

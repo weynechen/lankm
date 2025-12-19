@@ -18,8 +18,8 @@
 #include "state_machine.h"
 #include "keyboard_state.h"
 
-// F12键码（用于切换LOCAL/REMOTE模式）
-#define KEY_F12 88
+// Use KEY_PAUSE (Pause/Break) for mode switching - rare key, not used in applications
+// Note: KEY_PAUSE is defined in linux/input-event-codes.h as 119
 
 static int running = 1;
 static int uart_fd = -1;
@@ -205,7 +205,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Ready. Press F12 to toggle LOCAL/REMOTE mode\n");
+    printf("Ready. Press KEY_PAUSE to toggle LOCAL/REMOTE mode\n");
     printf("Press Ctrl+C to shutdown\n");
 
     // 设置终端为raw模式
@@ -216,12 +216,10 @@ int main(int argc, char *argv[]) {
     HIDKeyboardReport keyboard_report;
     int last_report_sent = 0;
 
-    // Heartbeat timer for LOCAL mode
+    // Mouse movement heartbeat timer for LOCAL mode (prevents sleep without key press issues)
     time_t last_heartbeat = 0;
-    int heartbeat_delay = 0;  // Counter for delay between press and release
     const time_t heartbeat_interval = 30; // Send heartbeat every 30 seconds
-    const int heartbeat_key_delay = 1000; // About 100ms delay (1000 * 0.1ms)
-    int heartbeat_pending = 0;  // Flag indicating if we have a pending key press
+    int heartbeat_mouse_moved = 0; // Counter for mouse movement duration
 
     // Mouse movement flush timer
     struct timespec last_mouse_flush = {0, 0};
@@ -238,29 +236,23 @@ int main(int argc, char *argv[]) {
             if (last_heartbeat == 0) {
                 // Initialize heartbeat timer
                 last_heartbeat = current_time;
-            } else if (heartbeat_delay > 0) {
-                // In the delay period between press and release
-                heartbeat_delay--;
+            } else if (heartbeat_mouse_moved > 0) {
+                // Mouse is currently moving (send small movements over time)
+                heartbeat_mouse_moved--;
 
-                // Send release when delay is finished
-                if (heartbeat_delay == 0) {
-                    memset(&keyboard_report, 0, sizeof(HIDKeyboardReport));
-                    msg_keyboard_report(&msg, &keyboard_report);
-                    send_message(&msg);
-                    heartbeat_pending = 0;  // Clear pending flag
-                }
-
-                events_processed++; // Count this as activity to avoid sleep
-            } else if (current_time - last_heartbeat >= heartbeat_interval) {
-                // Time to send heartbeat - press Shift key
-                memset(&keyboard_report, 0, sizeof(HIDKeyboardReport));
-                keyboard_report.keys[0] = 225; // Left Shift key HID code
-                msg_keyboard_report(&msg, &keyboard_report);
+                // Send small mouse movement
+                msg_mouse_move(&msg, 1, 1); // Move 1px diagonal
                 send_message(&msg);
+                events_processed++; // Count this as activity to avoid sleep
 
-                // Set delay before release (about 100ms)
-                heartbeat_delay = heartbeat_key_delay;
-                heartbeat_pending = 1;  // Mark that we have a pending key press
+                if (heartbeat_mouse_moved == 0) {
+                    // Movement finished
+                    printf("[HEARTBEAT] Mouse movement heartbeat sent\n");
+                }
+            } else if (current_time - last_heartbeat >= heartbeat_interval) {
+                // Time to send heartbeat - move mouse in a small square pattern
+                printf("[HEARTBEAT] Starting mouse movement heartbeat\n");
+                heartbeat_mouse_moved = 5; // Send 5 small movements
                 last_heartbeat = current_time;
                 events_processed++;
             }
@@ -270,16 +262,12 @@ int main(int argc, char *argv[]) {
         for (int i = 0; i < 20; i++) {
             InputEvent event;
             if (capture_input(&event) == 0) {
-                // Check if switching from LOCAL to REMOTE with pending heartbeat
-                if (event.type == EV_KEY && event.code == KEY_F12 && event.value == 1 &&
-                    get_current_state() == STATE_LOCAL && heartbeat_pending) {
-                    // We have a pending Shift key press, send release before switch
-                    printf("[HEARTBEAT] Clearing pending Shift key before mode switch\n");
-                    memset(&keyboard_report, 0, sizeof(HIDKeyboardReport));
-                    msg_keyboard_report(&msg, &keyboard_report);
-                    send_message(&msg);
-                    heartbeat_delay = 0;
-                    heartbeat_pending = 0;
+                // Check if switching from LOCAL to REMOTE with pending mouse movement
+                if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1 &&
+                    get_current_state() == STATE_LOCAL && heartbeat_mouse_moved > 0) {
+                    // We have pending mouse movements, just clear the counter
+                    printf("[HEARTBEAT] Canceling pending mouse movements before mode switch\n");
+                    heartbeat_mouse_moved = 0;
                 }
 
                 // Process through state machine
