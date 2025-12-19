@@ -6,18 +6,13 @@
 
 static ControlState current_state = STATE_LOCAL;
 
-// Key codes for toggle
-#define KEY_F8 66
-#define KEY_LEFTALT 56
-#define KEY_RIGHTALT 100
-
-static int alt_pressed = 0;
+// Key codes for toggle - using F12 to avoid Alt key issues
+#define KEY_F12 88
 
 void init_state_machine(void) {
     current_state = STATE_LOCAL;
-    alt_pressed = 0;
     printf("State machine initialized in LOCAL mode\n");
-    printf("Press Alt+F8 to toggle between LOCAL and REMOTE control\n");
+    printf("Press F12 to toggle between LOCAL and REMOTE control\n");
 }
 
 int process_event(const InputEvent *event, Message *msg) {
@@ -25,33 +20,21 @@ int process_event(const InputEvent *event, Message *msg) {
         return 0;
     }
 
-    // Track Alt key state
-    if (event->type == EV_KEY && (event->code == KEY_LEFTALT || event->code == KEY_RIGHTALT)) {
-        alt_pressed = (event->value == 1);
-        // In LOCAL mode, don't send Alt to client
-        if (current_state == STATE_LOCAL) {
-            return 0;
-        }
-        // In REMOTE mode, send Alt to client
-        msg_key_event(msg, event->code, event->value);
-        return 1;
-    }
-
-    // Handle Alt+F8 as toggle
-    if (event->type == EV_KEY && event->code == KEY_F8 && event->value == 1 && alt_pressed) {
+    // Handle F12 as toggle (simple and reliable)
+    if (event->type == EV_KEY && event->code == KEY_F12 && event->value == 1) {
         if (current_state == STATE_LOCAL) {
             // Switch to remote control
             current_state = STATE_REMOTE;
             set_device_grab(1); // Grab devices so input doesn't affect local system
             msg_switch(msg, 1); // 1 = switch to remote
-            printf("Switched to REMOTE control (Alt+F8 pressed)\n");
+            printf("Switched to REMOTE control (F12 pressed)\n");
             return 1;
         } else {
             // Switch to local control
             current_state = STATE_LOCAL;
             set_device_grab(0); // Ungrab devices so input affects local system again
             msg_switch(msg, 0); // 0 = switch to local
-            printf("Switched to LOCAL control (Alt+F8 pressed)\n");
+            printf("Switched to LOCAL control (F12 pressed)\n");
             return 1;
         }
     }
@@ -123,7 +106,6 @@ int process_event(const InputEvent *event, Message *msg) {
 
 void cleanup_state_machine(void) {
     current_state = STATE_LOCAL;
-    alt_pressed = 0;
     set_device_grab(0); // Ensure devices are ungrabbed on cleanup
     printf("State machine cleaned up\n");
 }

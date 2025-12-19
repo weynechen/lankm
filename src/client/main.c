@@ -3,6 +3,8 @@
 #include <string.h>
 #include <winsock2.h>
 #include <windows.h>
+#include <time.h>
+#include <direct.h>
 #include "common/protocol.h"
 #include "input_inject.h"
 #include "keymap.h"
@@ -10,10 +12,75 @@
 #pragma comment(lib, "ws2_32.lib")
 
 static int running = 1;
+static FILE *log_file = NULL;
+
+// Get current timestamp string
+void get_timestamp(char *buffer, size_t buffer_size) {
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    strftime(buffer, buffer_size, "%Y-%m-%d %H:%M:%S", tm_info);
+}
+
+// Log message to both console and file
+void log_message(const char *format, ...) {
+    char timestamp[64];
+    get_timestamp(timestamp, sizeof(timestamp));
+
+    // Format the message
+    char message[1024];
+    va_list args;
+    va_start(args, format);
+    vsnprintf(message, sizeof(message), format, args);
+    va_end(args);
+
+    // Print to console
+    printf("[%s] %s\n", timestamp, message);
+
+    // Write to log file
+    if (log_file) {
+        fprintf(log_file, "[%s] %s\n", timestamp, message);
+        fflush(log_file);  // Ensure it's written immediately
+    }
+}
+
+// Create Logs directory and open log file
+int init_logging() {
+    // Create Logs directory
+    if (_mkdir("Logs") == 0) {
+        printf("Created Logs directory\n");
+    } else if (errno != EEXIST) {
+        printf("Warning: Could not create Logs directory (error %d)\n", errno);
+        // Continue anyway, will just log to console
+        return 0;
+    }
+
+    // Generate log filename with timestamp
+    time_t now = time(NULL);
+    struct tm *tm_info = localtime(&now);
+    char filename[256];
+    strftime(filename, sizeof(filename), "Logs\\lankm_client_%Y%m%d_%H%M%S.log", tm_info);
+
+    log_file = fopen(filename, "w");
+    if (!log_file) {
+        printf("Warning: Could not open log file %s (error %d)\n", filename, errno);
+        return -1;
+    }
+
+    log_message("Log file created: %s", filename);
+    return 0;
+}
+
+void cleanup_logging() {
+    if (log_file) {
+        log_message("Client shutting down");
+        fclose(log_file);
+        log_file = NULL;
+    }
+}
 
 BOOL WINAPI console_handler(DWORD signal) {
     if (signal == CTRL_C_EVENT || signal == CTRL_BREAK_EVENT || signal == CTRL_CLOSE_EVENT) {
-        printf("\nReceived shutdown signal (code: %d)\n", signal);
+        log_message("Received shutdown signal (code: %d)", signal);
         running = 0;
         return TRUE;
     }
@@ -28,15 +95,18 @@ int main(int argc, char *argv[]) {
     char *server_ip;
     int server_port = 24800;
 
-    printf("LanKM Client v1.0.0\n");
+    // Initialize logging first
+    init_logging();
+    log_message("LanKM Client v1.0.0 starting...");
 
     // Setup console handler
     SetConsoleCtrlHandler(console_handler, TRUE);
 
     // Check arguments
     if (argc < 2) {
-        printf("Usage: %s <server-ip> [port]\n", argv[0]);
-        printf("Example: %s 192.168.1.100\n", argv[0]);
+        log_message("Usage: %s <server-ip> [port]", argv[0]);
+        log_message("Example: %s 192.168.1.100", argv[0]);
+        cleanup_logging();
         return 1;
     }
 
@@ -44,35 +114,37 @@ int main(int argc, char *argv[]) {
     if (argc > 2) {
         server_port = atoi(argv[2]);
         if (server_port <= 0 || server_port > 65535) {
-            printf("Invalid port number. Using default port 24800.\n");
+            log_message("Invalid port number. Using default port 24800.");
             server_port = 24800;
         }
     }
 
     // Initialize Winsock
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        printf("Failed to initialize Winsock: %d\n", WSAGetLastError());
+        log_message("Failed to initialize Winsock: %d", WSAGetLastError());
+        cleanup_logging();
         return 1;
     }
 
     // Create socket
     sock_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock_fd == INVALID_SOCKET) {
-        printf("Failed to create socket: %d\n", WSAGetLastError());
+        log_message("Failed to create socket: %d", WSAGetLastError());
         WSACleanup();
+        cleanup_logging();
         return 1;
     }
 
     // Disable Nagle's algorithm for low latency
     BOOL nagle_disabled = TRUE;
     if (setsockopt(sock_fd, IPPROTO_TCP, TCP_NODELAY, (char*)&nagle_disabled, sizeof(nagle_disabled)) == SOCKET_ERROR) {
-        printf("Warning: Could not disable Nagle's algorithm\n");
+        log_message("Warning: Could not disable Nagle's algorithm");
     }
 
     // Disable socket send buffer to reduce buffering
-    int sendbuf_size = 0; // Use system default but hint for minimal buffering
+    int sendbuf_size = 0;
     if (setsockopt(sock_fd, SOL_SOCKET, SO_SNDBUF, (char*)&sendbuf_size, sizeof(sendbuf_size)) == SOCKET_ERROR) {
-        printf("Warning: Could not set send buffer size\n");
+        log_message("Warning: Could not set send buffer size");
     }
 
     // Setup server address
@@ -82,38 +154,41 @@ int main(int argc, char *argv[]) {
 
     // Convert IP address
     if (inet_pton(AF_INET, server_ip, &server_addr.sin_addr) != 1) {
-        printf("Invalid IP address: %s\n", server_ip);
+        log_message("Invalid IP address: %s", server_ip);
         closesocket(sock_fd);
         WSACleanup();
+        cleanup_logging();
         return 1;
     }
 
     // Connect to server
-    printf("Connecting to %s:%d...\n", server_ip, server_port);
+    log_message("Connecting to %s:%d...", server_ip, server_port);
     if (connect(sock_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) == SOCKET_ERROR) {
-        printf("Failed to connect to server: %d\n", WSAGetLastError());
+        log_message("Failed to connect to server: %d", WSAGetLastError());
         closesocket(sock_fd);
         WSACleanup();
+        cleanup_logging();
         return 1;
     }
 
-    printf("Connected to server!\n");
+    log_message("Connected to server!");
 
     // Initialize input injection
     if (init_input_inject() != 0) {
-        printf("Failed to initialize input injection\n");
+        log_message("Failed to initialize input injection");
         closesocket(sock_fd);
         WSACleanup();
+        cleanup_logging();
         return 1;
     }
 
     // Initialize keymap
     init_keymap();
 
-    printf("Receiving input events... Press Ctrl+C to disconnect\n");
+    log_message("Receiving input events... Press Ctrl+C to disconnect");
 
     // Set socket to non-blocking mode
-    u_long mode = 1;  // 1 = non-blocking
+    u_long mode = 1;
     ioctlsocket(sock_fd, FIONBIO, &mode);
 
     // Main loop
@@ -125,67 +200,60 @@ int main(int argc, char *argv[]) {
         FD_ZERO(&read_fds);
         FD_SET(sock_fd, &read_fds);
 
-        // Set timeout to 1ms for low latency (was 50ms)
-        // We still need a timeout to allow checking the running flag periodically
+        // Set timeout to 1ms for low latency
         timeout.tv_sec = 0;
-        timeout.tv_usec = 1000;  // 1ms
+        timeout.tv_usec = 1000;
 
         int result = select(0, &read_fds, NULL, NULL, &timeout);
 
         if (result > 0 && FD_ISSET(sock_fd, &read_fds)) {
             // Data is available, receive it
-            // Try to receive multiple messages in batch, BUT clicks are special
             int batch_count = 0;
 
-            while (batch_count < 25) { // Max events per iteration
+            while (batch_count < 25) {
                 int bytes_received = recv(sock_fd, (char*)&msg, sizeof(Message), 0);
 
                 if (bytes_received <= 0) {
                     int error = WSAGetLastError();
                     if (bytes_received == 0) {
-                        printf("\nServer disconnected\n");
-                        running = 0; // Exit main loop
+                        log_message("Server disconnected");
+                        running = 0;
                         break;
                     } else if (error == WSAEWOULDBLOCK) {
-                        // No more data available right now, exit batch loop gracefully
                         break;
                     } else if (error == WSAECONNRESET) {
-                        printf("\nConnection reset by server\n");
+                        log_message("Connection reset by server");
                         running = 0;
                         break;
                     } else {
-                        printf("Error receiving data: %d\n", error);
+                        log_message("Error receiving data: %d", error);
                         running = 0;
                         break;
                     }
                 }
 
                 if (bytes_received != sizeof(Message)) {
-                    printf("Received incomplete message (%d bytes)\n", bytes_received);
+                    log_message("Received incomplete message (%d bytes)", bytes_received);
                     break;
                 }
 
                 // Process message based on type
                 switch (msg.type) {
                     case MSG_MOUSE_MOVE:
-                        // DEBUG: printf("Mouse move: dx=%d, dy=%d\n", msg.a, msg.b);
                         inject_mouse_move(msg.a, msg.b);
                         break;
 
                     case MSG_MOUSE_BUTTON:
-                        // DEBUG: Show mouse button activity to help diagnose
                         {
                             const char* btn_name = "UNKNOWN";
                             const char* state_name = msg.b ? "DOWN" : "UP";
                             if (msg.a == 1) btn_name = "LEFT";
                             else if (msg.a == 2) btn_name = "RIGHT";
                             else if (msg.a == 3) btn_name = "MIDDLE";
-                            printf("Client: Mouse %s %s\n", btn_name, state_name);
+                            log_message("Mouse %s %s (type=%d, a=%d, b=%d)", btn_name, state_name, msg.type, msg.a, msg.b);
                         }
                         inject_mouse_button(msg.a, msg.b);
-                        // BREAK OUT of batch loop - this click needs immediate focus
-                        // Don't process more pending (possibly stale) move events
-                        batch_count = 9999; // Force exit
+                        batch_count = 9999;
                         break;
 
                     case MSG_KEY_EVENT:
@@ -193,22 +261,22 @@ int main(int argc, char *argv[]) {
                             WORD vk_code = map_scancode_to_vk(msg.a);
                             if (vk_code != 0) {
                                 inject_key_event(vk_code, msg.b);
+                                log_message("Key event: scancode=%d, vk=%d, state=%d", msg.a, vk_code, msg.b);
                             }
                         }
-                        // Key events should also exit batch to prioritize responsiveness
                         batch_count = 9999;
                         break;
 
                     case MSG_SWITCH:
                         if (msg.a == 1) {
-                            printf("Control switched to remote\n");
+                            log_message("Control switched to REMOTE");
                         } else {
-                            printf("Control switched to local\n");
+                            log_message("Control switched to LOCAL");
                         }
                         break;
 
                     default:
-                        printf("Unknown message type: %d\n", msg.type);
+                        log_message("Unknown message type: %d", msg.type);
                         break;
                 }
 
@@ -216,30 +284,27 @@ int main(int argc, char *argv[]) {
 
                 // Quick check if more data is available without waiting
                 fd_set read_fds_quick;
-                struct timeval timeout_quick = {0, 0}; // Non-blocking check
+                struct timeval timeout_quick = {0, 0};
                 FD_ZERO(&read_fds_quick);
                 FD_SET(sock_fd, &read_fds_quick);
 
                 if (select(0, &read_fds_quick, NULL, NULL, &timeout_quick) <= 0) {
-                    break; // No more data immediately available
+                    break;
                 }
             }
         } else if (result == SOCKET_ERROR) {
-            printf("select() error: %d\n", WSAGetLastError());
+            log_message("select() error: %d", WSAGetLastError());
             break;
         }
-        // If result == 0, timeout occurred, just loop again to check running flag
-        // No extra sleep needed - we already have 1ms timeout in select()
     }
 
     // Cleanup
-    printf("\nCleaning up...\n");
+    log_message("Cleaning up...");
 
-    // Graceful shutdown: set socket back to blocking mode for proper close
-    mode = 0;  // 0 = blocking
+    // Graceful shutdown
+    mode = 0;
     ioctlsocket(sock_fd, FIONBIO, &mode);
 
-    // Clean up resources
     cleanup_input_inject();
 
     // Close socket gracefully
@@ -247,6 +312,7 @@ int main(int argc, char *argv[]) {
     closesocket(sock_fd);
     WSACleanup();
 
-    printf("Client shutdown complete\n");
+    log_message("Client shutdown complete");
+    cleanup_logging();
     return 0;
 }

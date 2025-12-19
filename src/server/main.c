@@ -22,6 +22,14 @@ void signal_handler(int sig) {
     }
 }
 
+// Emergency cleanup handler - called on abnormal termination
+void emergency_cleanup(void) {
+    printf("\nEmergency cleanup - releasing all input devices...\n");
+    // Force ungrab all devices
+    set_device_grab(0);
+    cleanup_input_capture();
+}
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
@@ -35,6 +43,9 @@ int main(int argc, char *argv[]) {
     // Setup signal handlers
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+
+    // Register emergency cleanup
+    atexit(emergency_cleanup);
 
     // Initialize input capture
     if (init_input_capture() != 0) {

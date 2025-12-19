@@ -6,6 +6,9 @@
 static INPUT input_buffer[2];
 static int input_count = 0;
 
+// External logging function from main.c
+extern void log_message(const char *format, ...);
+
 // Screen dimensions for absolute positioning
 static int screen_width = 0;
 static int screen_height = 0;
@@ -59,47 +62,46 @@ void inject_mouse_move(int dx, int dy) {
     input.mi.time = 0;
     input.mi.dwExtraInfo = 0;
 
-    SendInput(1, &input, sizeof(INPUT));
+    UINT result = SendInput(1, &input, sizeof(INPUT));
+    if (result != 1) {
+        DWORD error = GetLastError();
+        fprintf(stderr, "SendInput failed for mouse move: %lu (error %lu)\n", result, error);
+    }
 }
 
 void inject_mouse_button(uint8_t button, uint8_t state) {
-    // Use array to send both sync and button as atomic operation
-    // Modern Windows expects events to be sent together for taskbar/Start menu
+    // Simple approach: just send the button event directly
+    // The cursor position is controlled by inject_mouse_move which updates continuously
+
+    INPUT input = {0};
+    input.type = INPUT_MOUSE;
+    input.mi.dx = 0;
+    input.mi.dy = 0;
+    input.mi.mouseData = 0;
+    input.mi.time = 0;
+    input.mi.dwExtraInfo = 0;
 
     if (state == 1) {
-        // DOWN event - prepare array with sync and down
-        INPUT inputs[2] = {0};
-
-        // First: sync move (0,0) to ensure cursor is ready
-        inputs[0].type = INPUT_MOUSE;
-        inputs[0].mi.dx = 0;
-        inputs[0].mi.dy = 0;
-        inputs[0].mi.dwFlags = MOUSEEVENTF_MOVE;
-
-        // Second: actual button down
-        inputs[1].type = INPUT_MOUSE;
-        inputs[1].mi.dx = 0;
-        inputs[1].mi.dy = 0;
-        inputs[1].mi.dwFlags = (button == 1) ? MOUSEEVENTF_LEFTDOWN :
-                                (button == 2) ? MOUSEEVENTF_RIGHTDOWN :
-                                MOUSEEVENTF_MIDDLEDOWN;
-
-        SendInput(2, inputs, sizeof(INPUT));
-
+        // Button DOWN
+        switch (button) {
+            case 1: input.mi.dwFlags = MOUSEEVENTF_LEFTDOWN; break;
+            case 2: input.mi.dwFlags = MOUSEEVENTF_RIGHTDOWN; break;
+            case 3: input.mi.dwFlags = MOUSEEVENTF_MIDDLEDOWN; break;
+        }
     } else {
-        // UP event - this must happen separately to complete the click
-        INPUT input = {0};
-        input.type = INPUT_MOUSE;
-        input.mi.dx = 0;
-        input.mi.dy = 0;
+        // Button UP
+        switch (button) {
+            case 1: input.mi.dwFlags = MOUSEEVENTF_LEFTUP; break;
+            case 2: input.mi.dwFlags = MOUSEEVENTF_RIGHTUP; break;
+            case 3: input.mi.dwFlags = MOUSEEVENTF_MIDDLEUP; break;
+        }
+    }
 
-        // For taskbar to register click properly:
-        // UP event has no move flag, just the button flag
-        input.mi.dwFlags = (button == 1) ? MOUSEEVENTF_LEFTUP :
-                          (button == 2) ? MOUSEEVENTF_RIGHTUP :
-                          MOUSEEVENTF_MIDDLEUP;
-
-        SendInput(1, &input, sizeof(INPUT));
+    UINT result = SendInput(1, &input, sizeof(INPUT));
+    if (result != 1) {
+        // Log error if SendInput failed
+        DWORD error = GetLastError();
+        fprintf(stderr, "SendInput failed for mouse button: %lu (error %lu)\n", result, error);
     }
 }
 
@@ -138,9 +140,31 @@ void inject_key_event(uint16_t vk_code, uint8_t state) {
             break;
     }
 
-    SendInput(1, &input, sizeof(INPUT));
+    UINT result = SendInput(1, &input, sizeof(INPUT));
+    if (result != 1) {
+        DWORD error = GetLastError();
+        fprintf(stderr, "SendInput failed for key event (vk=%d, state=%d): %lu (error %lu)\n", vk_code, state, result, error);
+    }
 }
 
 void cleanup_input_inject(void) {
-    // Nothing to cleanup
+    // Release any potentially stuck modifier keys
+    // This helps prevent sticky key issues if program exits abnormally
+
+    INPUT input = {0};
+    input.type = INPUT_KEYBOARD;
+    input.ki.dwFlags = KEYEVENTF_KEYUP;
+
+    // Release common modifier keys that might be stuck
+    input.ki.wVk = VK_MENU;        // Alt
+    SendInput(1, &input, sizeof(INPUT));
+
+    input.ki.wVk = VK_CONTROL;     // Ctrl
+    SendInput(1, &input, sizeof(INPUT));
+
+    input.ki.wVk = VK_SHIFT;       // Shift
+    SendInput(1, &input, sizeof(INPUT));
+
+    input.ki.wVk = VK_LWIN;        // Windows key
+    SendInput(1, &input, sizeof(INPUT));
 }
