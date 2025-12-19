@@ -89,7 +89,13 @@ KERNEL=="event*", MODE="0666", GROUP="input"
 KERNEL=="ttyUSB*", MODE="0666", GROUP="dialout"
 ```
 
+## Additional Documentation
+
+- [README.md](README.md) - Main project documentation (English)
+- [中文文档](docs/README.zh-CN.md) - Chinese documentation
+- [设计文档](docs/design/design.md) - Design documentation (Chinese)
+
 ## Rules
-1. 你必须使用英文完成代码及注释
-2. 你必须使用中文来思考和回答
-3. ESP32的程序测试的方式为`idf-master` 加载环境变量（加载一次即可），随后`idf.py build app-flash monitor -p /dev/ttyACM0` 
+1. Code and comments must be written in English
+2. Think and respond in Chinese when communicating with users
+3. For ESP32 testing: load `idf-master` environment variables once, then run `idf.py build app-flash monitor -p /dev/ttyACM0` 
