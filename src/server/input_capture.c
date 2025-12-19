@@ -118,11 +118,11 @@ int capture_input(InputEvent *event) {
             event->value = ev.value;
 
             // Log all captured events for debugging
-            if (ev.type == EV_REL) {
-                printf("[CAPTURE] EV_REL event: code=%d, value=%d\n", ev.code, ev.value);
-            } else if (ev.type == EV_KEY && (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE)) {
-                printf("[CAPTURE] Mouse button event: code=%d, value=%d\n", ev.code, ev.value);
-            }
+            // if (ev.type == EV_REL) {
+            //     printf("[CAPTURE] EV_REL event: code=%d, value=%d\n", ev.code, ev.value);
+            // } else if (ev.type == EV_KEY && (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE)) {
+            //     printf("[CAPTURE] Mouse button event: code=%d, value=%d\n", ev.code, ev.value);
+            // }
 
             return 0;
         } else if (rc == -EAGAIN) {

@@ -265,7 +265,7 @@ int main(int argc, char *argv[]) {
             InputEvent event;
             int captured = capture_input(&event);
             if (captured == 0) {
-                printf("[MAIN] Event captured: type=%d, code=%d, value=%d\n", event.type, event.code, event.value);
+                // printf("[MAIN] Event captured: type=%d, code=%d, value=%d\n", event.type, event.code, event.value);
 
                 // Check if switching from LOCAL to REMOTE with pending mouse movement
                 if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1 &&

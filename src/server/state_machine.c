@@ -106,6 +106,30 @@ int process_event(const InputEvent *event, Message *msg) {
                     }
 
                     last_event_type = event->code;
+                } else if (event->code == REL_WHEEL || event->code == REL_HWHEEL) {
+                    // Mouse wheel events - send immediately
+                    int16_t vertical = 0;
+                    int16_t horizontal = 0;
+
+                    if (event->code == REL_WHEEL) {
+                        vertical = event->value; // Use the same direction as Linux input
+                        printf("[WHEEL] Vertical scroll detected: raw=%d, converted=%d\n", event->value, vertical);
+                    } else {
+                        horizontal = event->value;
+                        printf("[WHEEL] Horizontal scroll detected: value=%d\n", horizontal);
+                    }
+
+                    // Send any pending mouse movement first
+                    if (pending_dx != 0 || pending_dy != 0) {
+                        printf("[WHEEL] Has pending mouse movement (dx=%d, dy=%d), will send separately\n", pending_dx, pending_dy);
+                        // Note: We can't send both in one call, so just send wheel event
+                        // The pending movement will be sent on next flush
+                    }
+                    
+                    // Send wheel event
+                    msg_mouse_wheel(msg, vertical, horizontal);
+                    printf("[WHEEL] Sent wheel event: vertical=%d, horizontal=%d\n", vertical, horizontal);
+                    return 1;
                 }
             } else if (event->type == EV_KEY) {
                 // For non-movement events, send any pending mouse movement first
@@ -128,35 +152,8 @@ int process_event(const InputEvent *event, Message *msg) {
                     msg_mouse_button(msg, 3, event->value);
                     return 1;
                 }
-                // 返回0，键盘事件在main.c中通过keyboard_state_process_key处理
+                // Return 0, keyboard events are handled via keyboard_state_process_key in main.c
                 return 0;
-            } else if (event->type == EV_REL && (event->code == REL_WHEEL || event->code == REL_HWHEEL)) {
-                // Mouse wheel events - send immediately
-                int16_t vertical = 0;
-                int16_t horizontal = 0;
-
-                if (event->code == REL_WHEEL) {
-                    vertical = -event->value; // Linux typically sends positive for down, HID expects positive for up
-                    printf("[WHEEL] Vertical scroll detected: raw=%d, converted=%d\n", event->value, vertical);
-                } else {
-                    horizontal = event->value;
-                    printf("[WHEEL] Horizontal scroll detected: value=%d\n", horizontal);
-                }
-
-                // Send any pending mouse movement first, then wheel event
-                if (pending_dx != 0 || pending_dy != 0) {
-                    // If we have pending movement, send it now
-                    printf("[WHEEL] Sending pending mouse movement first (dx=%d, dy=%d)\n", pending_dx, pending_dy);
-                    send_pending_movement(msg);
-                    // Send wheel event after movement
-                    msg_mouse_wheel(msg, vertical, horizontal);
-                    printf("[WHEEL] Sent wheel event after movement: vertical=%d, horizontal=%d\n", vertical, horizontal);
-                } else {
-                    // No pending movement, send wheel event directly
-                    msg_mouse_wheel(msg, vertical, horizontal);
-                    printf("[WHEEL] Sent wheel event directly: vertical=%d, horizontal=%d\n", vertical, horizontal);
-                }
-                return 1;
             }
             break;
     }
