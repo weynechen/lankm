@@ -10,6 +10,7 @@
 #include <sys/ioctl.h>
 #include <stdarg.h>
 #include <linux/input.h>
+#include <time.h>
 #include "common/protocol.h"
 #include "input_capture.h"
 #include "state_machine.h"
@@ -174,8 +175,47 @@ int main(int argc, char *argv[]) {
     HIDKeyboardReport keyboard_report;
     int last_report_sent = 0;
 
+    // Heartbeat timer for LOCAL mode
+    time_t last_heartbeat = 0;
+    int heartbeat_delay = 0;  // Counter for delay between press and release
+    const time_t heartbeat_interval = 30; // Send heartbeat every 30 seconds
+    const int heartbeat_key_delay = 1000; // About 100ms delay (1000 * 0.1ms)
+
     while (running) {
         int events_processed = 0;
+
+        // Check for heartbeat in LOCAL mode
+        if (get_current_state() == STATE_LOCAL) {
+            time_t current_time = time(NULL);
+
+            if (last_heartbeat == 0) {
+                // Initialize heartbeat timer
+                last_heartbeat = current_time;
+            } else if (heartbeat_delay > 0) {
+                // In the delay period between press and release
+                heartbeat_delay--;
+
+                // Send release when delay is finished
+                if (heartbeat_delay == 0) {
+                    memset(&keyboard_report, 0, sizeof(HIDKeyboardReport));
+                    msg_keyboard_report(&msg, &keyboard_report);
+                    send_message(&msg);
+                }
+
+                events_processed++; // Count this as activity to avoid sleep
+            } else if (current_time - last_heartbeat >= heartbeat_interval) {
+                // Time to send heartbeat - press Shift key
+                memset(&keyboard_report, 0, sizeof(HIDKeyboardReport));
+                keyboard_report.keys[0] = 225; // Left Shift key HID code
+                msg_keyboard_report(&msg, &keyboard_report);
+                send_message(&msg);
+
+                // Set delay before release (about 100ms)
+                heartbeat_delay = heartbeat_key_delay;
+                last_heartbeat = current_time;
+                events_processed++;
+            }
+        }
 
         // Capture and process multiple events in quick succession
         for (int i = 0; i < 20; i++) {
