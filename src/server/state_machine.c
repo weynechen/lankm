@@ -1,14 +1,23 @@
 #include "state_machine.h"
-#include "edge_detector.h"
 #include "input_capture.h"
+#include "common/protocol.h"
 #include <stdio.h>
 #include <linux/input.h>
 
 static ControlState current_state = STATE_LOCAL;
 
+// Key codes for toggle
+#define KEY_F8 66
+#define KEY_LEFTALT 56
+#define KEY_RIGHTALT 100
+
+static int alt_pressed = 0;
+
 void init_state_machine(void) {
     current_state = STATE_LOCAL;
+    alt_pressed = 0;
     printf("State machine initialized in LOCAL mode\n");
+    printf("Press Alt+F8 to toggle between LOCAL and REMOTE control\n");
 }
 
 int process_event(const InputEvent *event, Message *msg) {
@@ -16,32 +25,33 @@ int process_event(const InputEvent *event, Message *msg) {
         return 0;
     }
 
-    // Track mouse position for edge detection in both states
-    if (event->type == EV_REL && event->code == REL_X) {
-        update_mouse_position(event->value, 0);
-    } else if (event->type == EV_REL && event->code == REL_Y) {
-        update_mouse_position(0, event->value);
+    // Track Alt key state
+    if (event->type == EV_KEY && (event->code == KEY_LEFTALT || event->code == KEY_RIGHTALT)) {
+        alt_pressed = (event->value == 1);
+        // In LOCAL mode, don't send Alt to client
+        if (current_state == STATE_LOCAL) {
+            return 0;
+        }
+        // In REMOTE mode, send Alt to client
+        msg_key_event(msg, event->code, event->value);
+        return 1;
     }
 
-    // Handle edge detection for switching
-    int edge_dx, edge_dy;
-    if (is_at_edge(&edge_dx, &edge_dy)) {
-        if (current_state == STATE_LOCAL && edge_dx < 0) {
-            // Switch to remote control when hitting left edge
+    // Handle Alt+F8 as toggle
+    if (event->type == EV_KEY && event->code == KEY_F8 && event->value == 1 && alt_pressed) {
+        if (current_state == STATE_LOCAL) {
+            // Switch to remote control
             current_state = STATE_REMOTE;
             set_device_grab(1); // Grab devices so input doesn't affect local system
             msg_switch(msg, 1); // 1 = switch to remote
-            start_remote_mode(); // Reset position for remote mode
-            printf("Switched to REMOTE control (edge: dx=%d, dy=%d)\n", edge_dx, edge_dy);
+            printf("Switched to REMOTE control (Alt+F8 pressed)\n");
             return 1;
-        } else if (current_state == STATE_REMOTE) {
-            // Switch to local control when hitting ANY edge while in remote state
-            // This allows returning to local from any edge (left, right, top, bottom)
+        } else {
+            // Switch to local control
             current_state = STATE_LOCAL;
             set_device_grab(0); // Ungrab devices so input affects local system again
             msg_switch(msg, 0); // 0 = switch to local
-            end_remote_mode(); // Restore normal edge detection
-            printf("Switched to LOCAL control (edge: dx=%d, dy=%d)\n", edge_dx, edge_dy);
+            printf("Switched to LOCAL control (Alt+F8 pressed)\n");
             return 1;
         }
     }
@@ -53,7 +63,7 @@ int process_event(const InputEvent *event, Message *msg) {
             return 0;
 
         case STATE_REMOTE:
-            // Send mouse movements to remote client (but not the edge-crossing ones)
+            // Send events to remote client
             if (event->type == EV_REL) {
                 if (event->code == REL_X || event->code == REL_Y) {
                     static int pending_dx = 0, pending_dy = 0;
@@ -94,8 +104,9 @@ int process_event(const InputEvent *event, Message *msg) {
                     msg_mouse_button(msg, 3, event->value);
                     return 1;
                 }
-                // Keyboard events
-                else if (event->code < 256) {
+                // Keyboard events (but not Ctrl or F8)
+                else if (event->code < 256 && event->code != KEY_LEFTCTRL &&
+                         event->code != KEY_RIGHTCTRL && event->code != KEY_F8) {
                     msg_key_event(msg, event->code, event->value);
                     return 1;
                 }
@@ -103,15 +114,6 @@ int process_event(const InputEvent *event, Message *msg) {
                 else {
                     printf("Server: Unknown EV_KEY code=%d value=%d\n", event->code, event->value);
                 }
-            }
-
-            // Check for escape key to return control
-            if (event->type == EV_KEY && event->code == KEY_ESC && event->value == 1) {
-                current_state = STATE_LOCAL;
-                set_device_grab(0); // Ungrab devices so input affects local system again
-                msg_switch(msg, 0); // 0 = switch to local
-                printf("Switched to LOCAL control (ESC key)\n");
-                return 1;
             }
             break;
     }
@@ -121,6 +123,7 @@ int process_event(const InputEvent *event, Message *msg) {
 
 void cleanup_state_machine(void) {
     current_state = STATE_LOCAL;
+    alt_pressed = 0;
     set_device_grab(0); // Ensure devices are ungrabbed on cleanup
     printf("State machine cleaned up\n");
 }

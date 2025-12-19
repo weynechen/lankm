@@ -65,7 +65,6 @@ if(UNIX AND NOT APPLE AND CAN_BUILD_SERVER)
     add_executable(lankm-server
         src/server/main.c
         src/server/input_capture.c
-        src/server/edge_detector.c
         src/server/state_machine.c
         ${COMMON_SOURCES}
     )

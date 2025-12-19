@@ -11,7 +11,6 @@
 #include <errno.h>
 #include "common/protocol.h"
 #include "input_capture.h"
-#include "edge_detector.h"
 #include "state_machine.h"
 
 static int running = 1;
@@ -43,13 +42,6 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    // Initialize edge detector
-    if (init_edge_detector() != 0) {
-        fprintf(stderr, "Failed to initialize edge detector\n");
-        cleanup_input_capture();
-        return 1;
-    }
-
     // Initialize state machine
     init_state_machine();
 
@@ -57,7 +49,6 @@ int main(int argc, char *argv[]) {
     server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd < 0) {
         perror("Failed to create socket");
-        cleanup_edge_detector();
         cleanup_input_capture();
         return 1;
     }
@@ -75,7 +66,6 @@ int main(int argc, char *argv[]) {
     if (bind(server_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
         perror("Failed to bind to port");
         close(server_fd);
-        cleanup_edge_detector();
         cleanup_input_capture();
         return 1;
     }
@@ -84,7 +74,6 @@ int main(int argc, char *argv[]) {
     if (listen(server_fd, 1) < 0) {
         perror("Failed to listen");
         close(server_fd);
-        cleanup_edge_detector();
         cleanup_input_capture();
         return 1;
     }
@@ -115,7 +104,6 @@ int main(int argc, char *argv[]) {
     if (!running) {
         printf("Shutdown requested, exiting...\n");
         close(server_fd);
-        cleanup_edge_detector();
         cleanup_input_capture();
         return 0;
     }
@@ -180,7 +168,6 @@ int main(int argc, char *argv[]) {
     close(client_fd);
     close(server_fd);
     cleanup_state_machine();
-    cleanup_edge_detector();
     cleanup_input_capture();
 
     printf("Server shutdown complete\n");
