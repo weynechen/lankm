@@ -137,22 +137,24 @@ int process_event(const InputEvent *event, Message *msg) {
 
                 if (event->code == REL_WHEEL) {
                     vertical = -event->value; // Linux typically sends positive for down, HID expects positive for up
-                    printf("[WHEEL] Vertical scroll: raw=%d, converted=%d\n", event->value, vertical);
+                    printf("[WHEEL] Vertical scroll detected: raw=%d, converted=%d\n", event->value, vertical);
                 } else {
                     horizontal = event->value;
-                    printf("[WHEEL] Horizontal scroll: value=%d\n", horizontal);
+                    printf("[WHEEL] Horizontal scroll detected: value=%d\n", horizontal);
                 }
 
                 // Send any pending mouse movement first, then wheel event
                 if (pending_dx != 0 || pending_dy != 0) {
                     // If we have pending movement, send it now
-                    printf("[WHEEL] Sending pending mouse movement first\n");
+                    printf("[WHEEL] Sending pending mouse movement first (dx=%d, dy=%d)\n", pending_dx, pending_dy);
                     send_pending_movement(msg);
-                    // But we still need to handle the wheel event, so don't return yet
-                } else {
-                    // No pending movement, send wheel event
+                    // Send wheel event after movement
                     msg_mouse_wheel(msg, vertical, horizontal);
-                    printf("[WHEEL] Sent wheel event: vertical=%d, horizontal=%d\n", vertical, horizontal);
+                    printf("[WHEEL] Sent wheel event after movement: vertical=%d, horizontal=%d\n", vertical, horizontal);
+                } else {
+                    // No pending movement, send wheel event directly
+                    msg_mouse_wheel(msg, vertical, horizontal);
+                    printf("[WHEEL] Sent wheel event directly: vertical=%d, horizontal=%d\n", vertical, horizontal);
                 }
                 return 1;
             }

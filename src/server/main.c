@@ -32,6 +32,8 @@ static void set_raw_terminal_mode(void) {
     raw = saved_termios;
     raw.c_lflag &= ~(ECHO | ICANON);  // 清除ECHO和ICANON
     raw.c_lflag |= ISIG;  // 显式确保ISIG被设置，允许Ctrl+C
+    // 确保中断字符是Ctrl+C
+    raw.c_cc[VINTR] = 3;  // Ctrl+C
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 }
 
@@ -261,7 +263,10 @@ int main(int argc, char *argv[]) {
         // Capture and process multiple events in quick succession
         for (int i = 0; i < 20; i++) {
             InputEvent event;
-            if (capture_input(&event) == 0) {
+            int captured = capture_input(&event);
+            if (captured == 0) {
+                printf("[MAIN] Event captured: type=%d, code=%d, value=%d\n", event.type, event.code, event.value);
+
                 // Check if switching from LOCAL to REMOTE with pending mouse movement
                 if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1 &&
                     get_current_state() == STATE_LOCAL && heartbeat_mouse_moved > 0) {
@@ -276,9 +281,9 @@ int main(int argc, char *argv[]) {
                     send_message(&msg);
                     events_processed++;
                 } else if (get_current_state() == STATE_REMOTE && event.type == EV_KEY) {
-                    // 处理键盘事件，在REMOTE模式下
+                    // Process keyboard events in REMOTE mode
                     if (keyboard_state_process_key(event.code, event.value, &keyboard_report)) {
-                        // 键盘状态改变，发送HID报告
+                        // Keyboard state changed, send HID report
                         msg_keyboard_report(&msg, &keyboard_report);
                         send_message(&msg);
                         last_report_sent = 1;

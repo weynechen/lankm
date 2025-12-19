@@ -196,7 +196,7 @@ static void uart_receive_task(void *pvParameters)
                             mouse_state.changed = true;
                             xSemaphoreGive(state_mutex);
                             xSemaphoreGive(hid_update_sem);
-                            ESP_LOGD(TAG, "Mouse wheel: vertical=%d, horizontal=%d, accumulated: v=%d, h=%d",
+                            ESP_LOGI(TAG, "[RECV] MOUSE_WHEEL vertical=%d, horizontal=%d, accumulated: v=%d, h=%d",
                                      msg.data.mouse_wheel.vertical, msg.data.mouse_wheel.horizontal,
                                      mouse_state.vertical_wheel, mouse_state.horizontal_wheel);
                             break;
@@ -289,8 +289,8 @@ static void hid_send_task(void *pvParameters)
 
                 tud_hid_mouse_report(HID_ITF_PROTOCOL_MOUSE,
                     mouse_local.buttons, dx, dy, vertical_wheel, horizontal_wheel);
-                ESP_LOGV(TAG, "Sent mouse report: dx=%d, dy=%d, wheel_v=%d, wheel_h=%d",
-                         dx, dy, vertical_wheel, horizontal_wheel);
+                ESP_LOGI(TAG, "[SEND] HID_MOUSE_REPORT buttons=0x%x dx=%d dy=%d wheel_v=%d wheel_h=%d",
+                         mouse_local.buttons, dx, dy, vertical_wheel, horizontal_wheel);
 
                 // 减去已发送的值（保留未发送的部分）
                 xSemaphoreTake(state_mutex, portMAX_DELAY);
