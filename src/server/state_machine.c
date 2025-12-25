@@ -3,10 +3,12 @@
 #include "common/protocol.h"
 #include <stdio.h>
 #include <linux/input.h>
+#include <time.h>
 
 static ControlState current_state = STATE_LOCAL;
 static int exit_requested = 0;
-static int ctrl_pressed = 0;
+static int pause_press_count = 0;
+static time_t last_pause_press_time = 0;
 
 // Note: KEY_PAUSE is used for mode switching - defined in linux/input.h as 119
 
@@ -18,6 +20,7 @@ void init_state_machine(void) {
     current_state = STATE_LOCAL;
     printf("State machine initialized in LOCAL mode\n");
     printf("Press PAUSE/Break to toggle between LOCAL and REMOTE control\n");
+    printf("Press PAUSE/Break 3 times within 2 seconds to exit\n");
 }
 
 static int pending_dx = 0;
@@ -53,25 +56,30 @@ int process_event(const InputEvent *event, Message *msg) {
         return 0;
     }
 
-    // Track Ctrl key state for Ctrl+C detection in LOCAL mode
-    if (event->type == EV_KEY) {
-        if (event->code == KEY_LEFTCTRL || event->code == KEY_RIGHTCTRL) {
-            ctrl_pressed = (event->value == 1 || event->value == 2); // 1=press, 2=repeat
-        }
-        // Check for Ctrl+C combination in LOCAL mode
-        if (current_state == STATE_LOCAL && event->code == KEY_C && event->value == 1 && ctrl_pressed) {
-            printf("Ctrl+C detected in LOCAL mode - requesting exit\n");
-            exit_requested = 1;
-            return 0;
-        }
-    }
-
-    // Handle PAUSE/Break as toggle
+    // Handle PAUSE/Break key: toggle mode or exit if pressed 3 times
     if (event->type == EV_KEY && event->code == KEY_PAUSE) {
         if (event->value == 1) {
-            // int sent = send_pending_movement(msg);
-
-            printf("PAUSE pressed, current_state=%d\n", current_state);
+            time_t current_time = time(NULL);
+            
+            // Check if this press is within 2 seconds of the last press
+            if (current_time - last_pause_press_time <= 2) {
+                pause_press_count++;
+            } else {
+                // Reset counter if too much time has passed
+                pause_press_count = 1;
+            }
+            last_pause_press_time = current_time;
+            
+            // Check for exit sequence (3 presses within 2 seconds)
+            if (pause_press_count >= 3) {
+                printf("PAUSE pressed 3 times - requesting exit\n");
+                exit_requested = 1;
+                return 0;
+            }
+            
+            printf("PAUSE pressed (%d/3), current_state=%d\n", pause_press_count, current_state);
+            
+            // Toggle mode
             if (current_state == STATE_LOCAL) {
                 // Switch to remote control
                 current_state = STATE_REMOTE;

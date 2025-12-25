@@ -178,7 +178,9 @@ int main(int argc, char *argv[]) {
     printf("Using UART device: %s at %d baud\n", uart_port, baud_rate);
 
     // Setup signal handlers
-    signal(SIGINT, signal_handler);
+    // Note: SIGINT (Ctrl+C) is NOT handled globally to avoid conflicts with other terminals
+    // Instead, Ctrl+C is detected via keyboard events in LOCAL mode only
+    // signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
     // Register emergency cleanup
@@ -203,11 +205,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Ready. Press KEY_PAUSE to toggle LOCAL/REMOTE mode\n");
-    printf("Press Ctrl+C to shutdown\n");
+    printf("Ready. Press PAUSE to toggle LOCAL/REMOTE mode\n");
+    printf("Press PAUSE 3 times within 2 seconds to shutdown\n");
 
     set_raw_terminal_mode();
-    printf("Terminal set to raw mode (Ctrl+C enabled)\n");
+    printf("Terminal set to raw mode\n");
 
     // Main loop - optimized for low latency
     HIDKeyboardReport keyboard_report;
