@@ -95,18 +95,18 @@ void set_device_grab(int grab) {
 int capture_input(InputEvent *event) {
     int rc;
     struct input_event ev;
-    const int WHEEL_CODE = 0x08; // REL_WHEEL value
-    const int HWHEEL_CODE = 0x06; // REL_HWHEEL value
+    // const int WHEEL_CODE = 0x08; // REL_WHEEL value
+    // const int HWHEEL_CODE = 0x06; // REL_HWHEEL value
 
     for (int i = 0; i < num_devices; i++) {
         rc = libevdev_next_event(devices[i], LIBEVDEV_READ_FLAG_NORMAL, &ev);
 
         if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
             // Log wheel events for debugging
-            if (ev.type == EV_REL && (ev.code == WHEEL_CODE || ev.code == HWHEEL_CODE)) {
-                printf("[CAPTURE] Wheel event detected: type=%d, code=%d, value=%d from device %s\n",
-                       ev.type, ev.code, ev.value, libevdev_get_name(devices[i]));
-            }
+            // if (ev.type == EV_REL && (ev.code == WHEEL_CODE || ev.code == HWHEEL_CODE)) {
+            //     printf("[CAPTURE] Wheel event detected: type=%d, code=%d, value=%d from device %s\n",
+            //            ev.type, ev.code, ev.value, libevdev_get_name(devices[i]));
+            // }
 
             // Filter out SYN_REPORT events
             if (ev.type == EV_SYN) {
