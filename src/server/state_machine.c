@@ -132,22 +132,22 @@ int process_event(const InputEvent *event, Message *msg) {
 
                     if (event->code == REL_WHEEL) {
                         vertical = event->value; // Use the same direction as Linux input
-                        printf("[WHEEL] Vertical scroll detected: raw=%d, converted=%d\n", event->value, vertical);
+                        // printf("[WHEEL] Vertical scroll detected: raw=%d, converted=%d\n", event->value, vertical);
                     } else {
                         horizontal = event->value;
-                        printf("[WHEEL] Horizontal scroll detected: value=%d\n", horizontal);
+                        // printf("[WHEEL] Horizontal scroll detected: value=%d\n", horizontal);
                     }
 
                     // Send any pending mouse movement first
                     if (pending_dx != 0 || pending_dy != 0) {
-                        printf("[WHEEL] Has pending mouse movement (dx=%d, dy=%d), will send separately\n", pending_dx, pending_dy);
+                        // printf("[WHEEL] Has pending mouse movement (dx=%d, dy=%d), will send separately\n", pending_dx, pending_dy);
                         // Note: We can't send both in one call, so just send wheel event
                         // The pending movement will be sent on next flush
                     }
                     
                     // Send wheel event
                     msg_mouse_wheel(msg, vertical, horizontal);
-                    printf("[WHEEL] Sent wheel event: vertical=%d, horizontal=%d\n", vertical, horizontal);
+                    // printf("[WHEEL] Sent wheel event: vertical=%d, horizontal=%d\n", vertical, horizontal);
                     return 1;
                 }
             } else if (event->type == EV_KEY) {
