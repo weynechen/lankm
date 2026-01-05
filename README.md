@@ -12,7 +12,7 @@ OneKM (Shared Keyboard & Mouse) is a lightweight keyboard and mouse sharing syst
 - Prevents target machine from entering sleep mode
 - 100% compatible with all HID-enabled operating systems
 - Bypasses all input interception mechanisms
-- Ultra-low latency (< 3ms)
+- Ultra-low latency delta (< 10ms)
 
 ## System Architecture
 
@@ -194,7 +194,7 @@ onekm/
 
 | Metric | Target | Description |
 |--------|--------|-------------|
-| End-to-end latency | < 3ms | Linux capture → ESP32 → Target Computer |
+| End-to-end latency delta | < 10ms | Linux capture → ESP32 → Target Computer |
 | CPU usage | < 1% | Linux Server |
 | Memory usage | < 5MB | Linux Server |
 | ESP32 processing | < 1ms | UART parsing + HID transmission |
@@ -206,7 +206,7 @@ onekm/
 | Cross-platform support | Limited/Variable | Universal HID support | Works with any OS |
 | Input interception | May be blocked | Always works | Hardware-level injection |
 | Security | Requires running code | Pure hardware | Minimal attack surface |
-| Latency | 5-10ms (software overhead) | <3ms | Direct hardware HID |
+| Latency delta| 10-100ms (software overhead) | <10ms | Direct hardware HID |
 | Installation required | Drivers/software needed | True plug-and-play | No software on target |
 | Maintenance | Complex codebase | Simple and reliable | Fewer failure points |
 
