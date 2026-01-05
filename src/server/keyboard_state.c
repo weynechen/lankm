@@ -1,5 +1,7 @@
 #include "keyboard_state.h"
 #include <string.h>
+#include <stdio.h>
+#include <linux/input-event-codes.h>
 
 static const uint8_t linux_to_hid_keymap[256] = {
     [0] = 0,
@@ -85,8 +87,10 @@ static const uint8_t linux_to_hid_keymap[256] = {
     [107] = 77,    // KEY_END -> End
     [108] = 81,    // KEY_DOWN -> Down Arrow
     [109] = 78,    // KEY_PAGEDOWN -> Page Down
-    [110] = 73,    // KEY_INSERT -> Insert
-    [111] = 76     // KEY_DELETE -> Delete
+    [110] = 73,     // KEY_INSERT -> Insert
+    [111] = 76,     // KEY_DELETE -> Delete
+    [125] = 227,    // KEY_LEFTMETA -> Left GUI (Win key)
+    [126] = 231     // KEY_RIGHTMETA -> Right GUI (Win key)
 };
 
 static HIDKeyboardReport current_report = {0};
@@ -137,6 +141,9 @@ int keyboard_state_process_key(uint16_t linux_keycode, uint8_t value, HIDKeyboar
     uint8_t hid_keycode = linux_to_hid_keymap[linux_keycode];
 
     if (hid_keycode == 0 && linux_keycode != 57) {
+        if (value) {
+            fprintf(stderr, "[WARNING] Unknown key pressed: linux_keycode=%u (0x%02X)\n", linux_keycode, linux_keycode);
+        }
         return 0;
     }
 
@@ -171,6 +178,16 @@ int keyboard_state_process_key(uint16_t linux_keycode, uint8_t value, HIDKeyboar
         case 230:  // RAlt
             if (value) current_report.modifiers |= MODIFIER_RIGHT_ALT;
             else current_report.modifiers &= ~MODIFIER_RIGHT_ALT;
+            state_changed = 1;
+            break;
+        case 227:  // LGUI (Left Win key)
+            if (value) current_report.modifiers |= MODIFIER_LEFT_GUI;
+            else current_report.modifiers &= ~MODIFIER_LEFT_GUI;
+            state_changed = 1;
+            break;
+        case 231:  // RGUI (Right Win key)
+            if (value) current_report.modifiers |= MODIFIER_RIGHT_GUI;
+            else current_report.modifiers &= ~MODIFIER_RIGHT_GUI;
             state_changed = 1;
             break;
         default:

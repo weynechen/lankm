@@ -1,45 +1,52 @@
 # LanKM - LAN Keyboard & Mouse Controller (Hardware-based)
 
+[中文文档](docs/README.zh-CN.md)
+
 LanKM (LAN Keyboard & Mouse) is a lightweight LAN keyboard and mouse sharing system implemented with a hardware-based solution for cross-platform control.
 
+**Note:** Currently, only Linux is supported as the host.
+
 **Key Advantages:**
-- ✅ **Linux server** captures input and sends to ESP32 via UART
-- ✅ **No software installation required** on target computers (Windows/Linux/macOS/any HID-compatible OS)
-- ✅ 100% compatible with all HID-enabled operating systems
-- ✅ Bypasses all input interception mechanisms
-- ✅ Ultra-low latency (< 3ms)
-- ✅ **Verified technology stack**: ESP-IDF + TinyUSB
+- **Linux server** captures input and sends to ESP32 via UART
+- **No software installation required** on target computers (Windows/Linux/macOS/any HID-compatible OS)
+- Prevents target machine from entering sleep mode
+- 100% compatible with all HID-enabled operating systems
+- Bypasses all input interception mechanisms
+- Ultra-low latency (< 3ms)
 
 ## System Architecture
 
 ```
-[Physical Keyboard/Mouse] → [Linux Server] → [UART] → [ESP32-S3-WROOM-1] → [USB] → [Target Computer (Windows/Linux/macOS/any HID-compatible OS)]
+[Physical Keyboard/Mouse] → [Linux Server] → [UART] → [ESP32-S3-DevKitC-1] → [USB HID] → [Target Computer (Windows/Linux/macOS/any HID-compatible OS)]
 ```
 
 ### Component Description
 
-1. **Linux Server** (Linux only): Captures physical input devices and sends commands to ESP32 via UART
-2. **ESP32-S3-WROOM-1**: Receives UART commands and injects input via USB HID
+1. **Linux Server**: Captures physical input devices and sends commands to ESP32 via UART
+2. **ESP32-S3-DevKitC-1**: Receives UART commands and injects input via USB HID ([docs](https://docs.espressif.com/projects/esp-dev-kits/zh_CN/latest/esp32s3/esp32-s3-devkitc-1/index.html))
 3. **Target Computer**: Receives USB HID input directly - works with Windows, Linux, macOS, or any USB HID-compatible device (no software required on target)
+
+**Note:** Currently tested on Ubuntu 22.04.
 
 ## Hardware Requirements
 
 | Hardware | Description | Purpose |
 |----------|-------------|---------|
-| **Control Computer** | Linux PC/Raspberry Pi (server runs on Linux only) | Runs lankm-server to capture input |
-| ESP32-S3-WROOM-1 Development Board | With native USB OTG | HID device emulation |
-| USB Cable | Micro USB / Type-C | Connect ESP32 to target computer (any HID-compatible OS) |
-| UART Cable | 3 wires (TX/RX/GND) | Control computer ↔ ESP32 |
+| **Control Computer** | Linux PC (server runs on Linux only) | Runs lankm-server to capture input |
+| ESP32-S3-DevKitC-1 Development Board | With native USB OTG | HID device emulation |
+| USB Cable x2 | Micro USB / Type-C | Connect ESP32 to target computer and Linux server |
+
+**Note:** You can replace ESP32-S3-DevKitC-1 with any compatible board.
 
 ### ESP32-S3 Pin Connections
-```
-USB  ─────────────────────→ Target Computer (plug directly into Windows/Linux/macOS)
-GPIO44 (UART0_RX) ←────── Linux UART TX
-GPIO43 (UART0_TX) ─────── Linux UART RX
-GND                 ────── Linux GND
-```
 
-**Note:** UART0 is default for download, needs remapping to GPIO43/44
+```
+USB Port ─────────────────────→ Target Computer (plug directly into Windows/Linux/macOS)
+
+USB-to-UART Port ─────────────────────→ Linux server
+
+```
+![ESP32-S3-DevKitC-1](https://docs.espressif.com/projects/esp-dev-kits/zh_CN/latest/esp32s3/_images/ESP32-S3-DevKitC-1_v2-annotated-photo.png)
 
 ## Build Requirements
 
@@ -69,8 +76,8 @@ source $IDF_PATH/export.sh
 
 cd src/device
 
-# Configure project
-idf.py menuconfig
+# Configure target
+idf.py set-target esp32s3
 
 # Build
 idf.py build
@@ -78,7 +85,7 @@ idf.py build
 # Flash (replace with actual port)
 idf.py -p /dev/ttyACM0 flash
 
-# Monitor output
+# Monitor output (optional, for debugging only)
 idf.py -p /dev/ttyACM0 monitor
 ```
 
@@ -88,11 +95,12 @@ idf.py -p /dev/ttyACM0 monitor
 
 ```
 ESP32-S3:
-    USB  ─────────────→ Target Computer (Windows/Linux/macOS)
-    GPIO16 (RX) ←───── Linux UART TX
-    GPIO17 (TX) ────── Linux UART RX
-    GND      ────────→ Linux GND
+    USB Port ─────────────────────→ Target Computer
+
+    USB-to-UART Port ─────────────→ Linux server
 ```
+
+Use `ls /dev/tty*` to verify device connection.
 
 ### 2. Run Server
 
@@ -103,25 +111,11 @@ sudo ./build/lankm-server /dev/ttyACM0
 
 ### 3. Operation Instructions
 
-- **F12**: Toggle control mode (LOCAL ↔ REMOTE)
-- **REMOTE mode**: All input sent to target computer (Windows/Linux/macOS)
-- **LOCAL mode**: Input affects local Linux system
+- **Press PAUSE/Break**: Toggle control mode (LOCAL ↔ REMOTE)
+    - **REMOTE mode**: All input sent to target computer (Windows/Linux/macOS)
+    - **LOCAL mode**: Input affects local Linux system
 
-## Permissions Configuration
-
-### Linux udev Rules
-Create `/etc/udev/rules.d/99-lankm.rules`:
-```
-KERNEL=="event*", MODE="0666", GROUP="input"
-KERNEL=="ttyUSB*", MODE="0666", GROUP="dialout"
-KERNEL=="ttyAMA*", MODE="0666", GROUP="dialout"
-```
-
-Reload rules:
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
+- **Press PAUSE/Break 3 times within 2 seconds** to exit the program.
 
 ## Communication Protocol
 
@@ -209,18 +203,18 @@ lankm/
 
 | Feature | Software Solution | Hardware Solution | Result |
 |---------|------------------|-------------------|--------|
-| Cross-platform support | Limited/Variable | ✅ Universal HID support | Works with any OS |
-| Input interception | May be blocked | ✅ Always works | Hardware-level injection |
-| Security | Requires running code | ✅ Pure hardware | Minimal attack surface |
-| Latency | 5-10ms (software overhead) | ✅ <3ms | Direct hardware HID |
-| Installation required | Drivers/software needed | ✅ True plug-and-play | No software on target |
-| Maintenance | Complex codebase | ✅ Simple and reliable | Fewer failure points |
+| Cross-platform support | Limited/Variable | Universal HID support | Works with any OS |
+| Input interception | May be blocked | Always works | Hardware-level injection |
+| Security | Requires running code | Pure hardware | Minimal attack surface |
+| Latency | 5-10ms (software overhead) | <3ms | Direct hardware HID |
+| Installation required | Drivers/software needed | True plug-and-play | No software on target |
+| Maintenance | Complex codebase | Simple and reliable | Fewer failure points |
 
 ## Troubleshooting
 
 1. **ESP32 not recognized by target computer**: Check USB cable and drivers (works on Windows/Linux/macOS without special drivers)
 2. **UART no response**: Check wiring and permissions on Linux server
-3. **Input not working**: Confirm in REMOTE mode (toggle with F12) and check target computer is accepting HID input
+3. **Input not working**: Confirm in REMOTE mode (toggle with PAUSE/Break) and check target computer is accepting HID input
 4. **USB disconnects**: Re-initialize USB connection or try different USB port on target computer
 
 ## Core Innovation
@@ -235,7 +229,3 @@ Using **ESP32-S3's USB HID capability** as a universal input device completely s
 
 MIT License
 
-## Additional Documentation
-
-- [中文文档](docs/README.zh-CN.md) - Chinese documentation
-- [设计文档](docs/design/design.md) - Detailed design documentation
