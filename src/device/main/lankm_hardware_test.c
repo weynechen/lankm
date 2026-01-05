@@ -1,5 +1,5 @@
 /*
- * LanKM 硬件可行性测试程序
+ * OneKM 硬件可行性测试程序
  *
  * 测试键盘和鼠标混合输入功能
  * - 键盘：依次按下 A, B, C, Enter
@@ -17,7 +17,7 @@
 #include "driver/gpio.h"
 
 #define APP_BUTTON (GPIO_NUM_0)  // BOOT 按钮
-static const char *TAG = "lankm_test";
+static const char *TAG = "onekm_test";
 
 /************* TinyUSB 描述符 ****************/
 
@@ -32,10 +32,10 @@ const uint8_t hid_report_descriptor[] = {
 // 字符串描述符
 const char* hid_string_descriptor[5] = {
     (char[]){0x09, 0x04},  // 语言：英语
-    "LanKM",               // 制造商
-    "LanKM Test Device",   // 产品
+    "OneKM",               // 制造商
+    "OneKM Test Device",   // 产品
     "123456",              // 序列号
-    "LanKM HID Test",      // HID 接口
+    "OneKM HID Test",      // HID 接口
 };
 
 // 配置描述符
@@ -203,7 +203,7 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gpio_config(&boot_button_config));
 
-    ESP_LOGI(TAG, "=== LanKM Hardware Test ===");
+    ESP_LOGI(TAG, "=== OneKM Hardware Test ===");
     ESP_LOGI(TAG, "Press BOOT button to pause/resume");
     ESP_LOGI(TAG, "Testing keyboard + mouse mixed input");
 

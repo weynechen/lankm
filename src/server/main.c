@@ -174,7 +174,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    printf("LanKM Server v2.0.0 (UART Mode)\n");
+    printf("OneKM Server v2.0.0 (UART Mode)\n");
     printf("Using UART device: %s at %d baud\n", uart_port, baud_rate);
 
     // Setup signal handlers

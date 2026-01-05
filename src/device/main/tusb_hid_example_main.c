@@ -205,7 +205,7 @@ void app_main(void)
     };
     ESP_ERROR_CHECK(gpio_config(&boot_button_config));
 
-    ESP_LOGI(TAG, "=== LanKM Hardware Test ===");
+    ESP_LOGI(TAG, "=== OneKM Hardware Test ===");
     ESP_LOGI(TAG, "Press BOOT button to trigger test");
     ESP_LOGI(TAG, "Testing: Keyboard + Mouse mixed input");
 

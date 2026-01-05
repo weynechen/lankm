@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-LanKM is a lightweight LAN keyboard and mouse sharing system that allows controlling multiple computers with a single keyboard and mouse.
+OneKM is a lightweight LAN keyboard and mouse sharing system that allows controlling multiple computers with a single keyboard and mouse.
 
 **Architecture:**
 - **Control Server (Linux only)**: Captures physical input devices and sends to ESP32 via UART
@@ -34,15 +34,15 @@ sudo apt-get install build-essential cmake libevdev-dev libx11-dev
 
 ```bash
 # Linux Server (requires root)
-sudo ./build/lankm-server /dev/ttyACM0 [baud_rate]
+sudo ./build/onekm-server /dev/ttyACM0 [baud_rate]
 
 # Baud rate options: 115200, 230400 (default), 460800, 921600
 # Higher baud rates reduce latency but require ESP32 configuration
 
 # Examples:
-sudo ./build/lankm-server /dev/ttyACM0           # Default 230400 baud
-sudo ./build/lankm-server /dev/ttyACM0 460800    # High speed
-sudo ./build/lankm-server /dev/ttyACM0 921600    # Maximum speed
+sudo ./build/onekm-server /dev/ttyACM0           # Default 230400 baud
+sudo ./build/onekm-server /dev/ttyACM0 460800    # High speed
+sudo ./build/onekm-server /dev/ttyACM0 921600    # Maximum speed
 ```
 
 ## Architecture
@@ -116,7 +116,7 @@ sudo ./build/lankm-server /dev/ttyACM0 921600    # Maximum speed
 ```bash
 # Check USB polling rate on Windows (requires external tool)
 # Check serial latency
-sudo ./lankm-server /dev/ttyACM0 921600
+sudo ./onekm-server /dev/ttyACM0 921600
 
 # Use evtest to see input device latency
 evdev-grab /dev/input/eventX

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(lankm VERSION 1.0.0 LANGUAGES C)
+project(onekm VERSION 1.0.0 LANGUAGES C)
 
 # Set C standard
 set(CMAKE_C_STANDARD 11)
@@ -47,7 +47,7 @@ endif()
 
 # Server executable
 if(CAN_BUILD)
-    add_executable(lankm-server
+    add_executable(onekm-server
         src/server/main.c
         src/server/input_capture.c
         src/server/state_machine.c
@@ -55,10 +55,10 @@ if(CAN_BUILD)
         ${COMMON_SOURCES}
     )
 
-    target_link_libraries(lankm-server ${PLATFORM_LIBS} pthread)
+    target_link_libraries(onekm-server ${PLATFORM_LIBS} pthread)
 
     # Install target
-    install(TARGETS lankm-server DESTINATION bin)
+    install(TARGETS onekm-server DESTINATION bin)
 endif()
 
 # Enable testing

@@ -1,5 +1,5 @@
 /*
- * LanKM ESP32-S3 固件主程序
+ * OneKM ESP32-S3 固件主程序
  *
  * 功能：
  * 1. UART 接收：接收Linux服务器的USB HID报告
@@ -22,7 +22,7 @@
 #include "tinyusb_default_config.h"
 #include "class/hid/hid_device.h"
 
-#define TAG "lankm"
+#define TAG "onekm"
 
 // UART 配置 - 使用 UART0 (GPIO43/44) 避免下载器冲突
 #define UART_NUM UART_NUM_0
@@ -74,10 +74,10 @@ const uint8_t hid_report_descriptor[] = {
 // 字符串描述符
 const char* hid_string_descriptor[5] = {
     (char[]){0x09, 0x04},  // 语言：英语
-    "LanKM",               // 制造商
-    "LanKM Device",        // 产品
+    "OneKM",               // 制造商
+    "OneKM Device",        // 产品
     "123456",              // 序列号
-    "LanKM HID Interface", // HID 接口
+    "OneKM HID Interface", // HID 接口
 };
 
 // 配置描述符
@@ -311,7 +311,7 @@ static void hid_send_task(void *pvParameters)
 /************* 主程序 ***************/
 void app_main(void)
 {
-    ESP_LOGI(TAG, "=== LanKM ESP32-S3 Firmware ===");
+    ESP_LOGI(TAG, "=== OneKM ESP32-S3 Firmware ===");
     ESP_LOGI(TAG, "Mode: Pure forwarding (no state management)");
 
     // 1. 初始化 GPIO

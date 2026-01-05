@@ -1,27 +1,29 @@
-# LanKM 设计文档 - 硬件方案 (ESP-IDF + TinyUSB)
+# OneKM 设计文档 - 硬件方案 (ESP-IDF + TinyUSB)
 
 ## 1. 项目概述
 
-**LanKM** (LAN Keyboard & Mouse) 是一个基于硬件的局域网键鼠共享系统。
+**OneKM** (LAN Keyboard & Mouse) 是一个基于硬件的局域网键盘鼠标共享系统。
 
 ### 1.1 核心优势
 
-- **Windows 端无需任何软件**：使用 USB HID 硬件模拟
-- **绕过所有输入拦截**：Windows 识别为真实硬件设备
+- **目标计算机端无需任何软件**：使用 USB HID 硬件模拟
+- **绕过所有输入拦截**：操作系统识别为真实硬件设备
 - **极低延迟**：端到端延迟 < 3ms
-- **100% 兼容性**：支持所有 Windows 应用和游戏
-- **已验证技术栈**：ESP-IDF + TinyUSB（已测试成功）
+- **100% 兼容性**：支持所有 HID 兼容操作系统
+- **防止目标计算机进入休眠状态**
 
 ### 1.2 系统架构
 
 ```
-[物理键盘/鼠标] → [Linux服务器] → [UART] → [ESP32-S3] → [USB] → [Windows PC]
+[物理键盘/鼠标] → [Linux 服务器] → [UART] → [ESP32-S3-DevKitC-1] → [USB HID] → [目标计算机 (Windows/Linux/macOS)]
 ```
 
 **组件角色：**
-- **Linux Server**: 捕获物理输入，通过 UART 发送文本命令
-- **ESP32-S3**: 接收 UART 命令，通过 TinyUSB 发送 HID 报文
-- **Windows PC**: 直接接收 USB HID 输入，无需任何软件
+- **Linux Server**: 捕获物理输入设备，通过 UART 发送文本命令
+- **ESP32-S3-DevKitC-1**: 接收 UART 命令，通过 TinyUSB 发送 HID 报文
+- **目标计算机**: 直接接收 USB HID 输入，无需任何软件
+
+**注意：** 目前在 Ubuntu 22.04 上测试通过。
 
 ---
 
@@ -29,28 +31,30 @@
 
 ### 2.1 所需硬件
 
-| 硬件 | 说明 | 用途 |
+| 硬件 | 描述 | 用途 |
 |------|------|------|
-| ESP32-S3 开发板 | 带原生 USB OTG | HID 设备模拟 |
-| Linux 设备 | 树莓派/PC/笔记本 | 输入捕获 |
-| USB 线 | Micro USB / Type-C | 连接 Windows |
-| UART 线 | 3根 (TX/RX/GND) | Linux ↔ ESP32 |
+| ESP32-S3-DevKitC-1 开发板 | 带有原生 USB OTG | HID 设备模拟 |
+| Linux 设备 | Linux 电脑（服务器仅支持 Linux） | 输入捕获 |
+| USB 数据线 x2 | Micro USB / Type-C | 连接目标计算机和 Linux 服务器 |
+
+**注意：** 可以使用任何兼容的开发板替代 ESP32-S3-DevKitC-1。
 
 ### 2.2 硬件连接
 
-**ESP32-S3 引脚连接：**
+**ESP32-S3-DevKitC-1 连接方式：**
+
 ```
-USB  ─────────────────────→ Windows PC (直接插入)
-GPIO44 (UART0_RX) ←────── Linux UART TX
-GPIO43 (UART0_TX) ─────── Linux UART RX
-GND                 ────── Linux GND
+USB 接口 ─────────────────────→ 目标计算机（直接插入 Windows/Linux/macOS）
+
+USB 转 UART 接口 ─────────────────────→ Linux 服务器
 ```
 
+![ESP32-S3-DevKitC-1](https://docs.espressif.com/projects/esp-dev-kits/zh_CN/latest/esp32s3/_images/ESP32-S3-DevKitC-1_v2-annotated-photo.png)
+
 **注意：**
-- ESP32-S3 使用 **UART0** (GPIO43/44) 与 Linux 通信
-- UART0 默认用于下载/调试，但可重新映射到 GPIO43/44
-- USB 使用 **内置 USB OTG**，无需额外引脚
-- 供电：可通过 USB 或外部 5V
+- USB 接口用于连接目标计算机，注入 HID 输入
+- USB 转 UART 接口用于连接 Linux 服务器，接收命令
+- 供电：通过 USB 接口供电
 
 ---
 
@@ -63,29 +67,34 @@ GND                 ────── Linux GND
 ```
 src/
 ├── common/
-│   └── protocol.h        # 协议定义
+│   ├── protocol.h          # 协议定义 (Message struct)
+│   └── protocol.c          # 消息构造函数
 ├── server/
-│   ├── main.c            # 主程序 + UART 通信
-│   ├── input_capture.c   # evdev 输入捕获
-│   └── state_machine.c   # 状态管理 (LOCAL/REMOTE)
+│   ├── main.c              # 主程序 + UART 通信
+│   ├── input_capture.c     # evdev 输入捕获
+│   ├── input_capture.h
+│   ├── state_machine.c     # 状态管理 (LOCAL/REMOTE)
+│   └── state_machine.h
+├── keyboard_state.c        # 键盘状态管理
+└── keyboard_state.h
 ```
 
 #### 3.1.2 主程序流程
 
 ```
 初始化
-  ↓
+   ↓
 打开 evdev 设备
-  ↓
+   ↓
 打开 UART 设备
-  ↓
+   ↓
 初始化状态机 (LOCAL)
-  ↓
+   ↓
 主循环
-  ├─ 捕获输入事件
-  ├─ 状态机处理
-  ├─ 生成 UART 命令
-  └─ 发送到 ESP32
+   ├─ 捕获输入事件
+   ├─ 状态机处理
+   ├─ 生成 UART 命令
+   └─ 发送到 ESP32
 ```
 
 #### 3.1.3 输入捕获 (input_capture.c)
@@ -96,6 +105,7 @@ src/
 - 鼠标相对移动：`REL_X`, `REL_Y`
 - 鼠标按键：`BTN_LEFT`, `BTN_RIGHT`, `BTN_MIDDLE`
 - 键盘按键：`KEY_*`
+- 特殊按键：`KEY_PAUSE`（模式切换）
 
 **实现要点：**
 ```c
@@ -120,18 +130,19 @@ typedef enum {
 ```
 
 **状态转换：**
-- **触发条件**: F12 按键
+- **触发条件**: PAUSE/Break 按键
 - **LOCAL → REMOTE**: 抓取输入设备，发送切换命令
 - **REMOTE → LOCAL**: 释放输入设备，发送切换命令
+- **快速按 3 次 PAUSE/Break（2 秒内）**: 退出程序
 
 **异常处理：**
+- UART 断开 → 自动回到 LOCAL，强制释放所有按键
 - 网络断开 → 自动回到 LOCAL
-- 强制释放所有按键
 
 #### 3.1.5 UART 通信 (main.c)
 
 **配置：**
-- 波特率: 115200
+- 波特率: 230400（默认，可选 115200/460800/921600）
 - 数据位: 8
 - 停止位: 1
 - 校验: None
@@ -142,27 +153,29 @@ typedef enum {
 格式: TYPE,PARAM1,PARAM2\n
 ```
 
+---
+
 ### 3.2 ESP32-S3 固件 (ESP-IDF + TinyUSB)
 
 **技术栈：**
 - **框架**: ESP-IDF v5.x
-- **USB库**: TinyUSB (Espressif 官方集成)
+- **USB库**: TinyUSB（Espressif 官方集成）
 - **开发板**: ESP32-S3 Dev Module
 
 #### 3.2.1 任务架构
 
 ```
 ┌─────────────────────────────┐
-│ UART 接收任务 (Core 0)      │ ← 从 Linux 接收命令
-│  - 读取串口数据             │
-│  - 解析文本协议             │
-│  - 更新共享状态             │
+│ UART 接收任务 (Core 0)       │ ← 从 Linux 接收命令
+│  - 读取串口数据              │
+│  - 解析文本协议              │
+│  - 更新共享状态              │
 └──────────────┬──────────────┘
                │ (队列/信号量)
 ┌──────────────▼──────────────┐
-│ HID 发送任务 (Core 1)       │ → 向 Windows 发送 HID
-│  - 监听状态变化             │
-│  - 调用 TinyUSB API         │
+│ HID 发送任务 (Core 1)        │ → 向目标计算机发送 HID
+│  - 监听状态变化              │
+│  - 调用 TinyUSB API          │
 └─────────────────────────────┘
 ```
 
@@ -172,7 +185,7 @@ typedef enum {
 ```c
 // UART0: GPIO44(RX), GPIO43(TX)
 const uart_config_t uart_config = {
-    .baud_rate = 115200,
+    .baud_rate = 230400,
     .data_bits = UART_DATA_8_BITS,
     .parity = UART_PARITY_DISABLE,
     .stop_bits = UART_STOP_BITS_1,
@@ -180,7 +193,7 @@ const uart_config_t uart_config = {
 };
 uart_driver_install(UART_NUM_0, 256, 0, 0, NULL);
 
-// 手动映射引脚（绕过默认的 USB CDC 映射）
+// 映射引脚
 esp_rom_gpio_connect_out_signal(GPIO_NUM_43, UART_PERIPH_SIGNAL(0, SOC_UART_TX_PIN_IDX), false, false);
 esp_rom_gpio_connect_in_signal(GPIO_NUM_44, UART_PERIPH_SIGNAL(0, SOC_UART_RX_PIN_IDX), false, false);
 ```
@@ -190,7 +203,7 @@ esp_rom_gpio_connect_in_signal(GPIO_NUM_44, UART_PERIPH_SIGNAL(0, SOC_UART_RX_PI
 void uart_task(void *pvParameters) {
     uint8_t data[128];
     while (1) {
-        int len = uart_read_bytes(UART_NUM_2, data, sizeof(data), 10 / portTICK_PERIOD_MS);
+        int len = uart_read_bytes(UART_NUM_0, data, sizeof(data), 10 / portTICK_PERIOD_MS);
         if (len > 0) {
             // 解析命令并更新状态
             parse_and_update(data, len);
@@ -276,36 +289,36 @@ TYPE,PARAM1,PARAM2\n
 
 **消息类型：**
 
-| 命令 | 格式 | 说明 | 示例 |
+| 命令 | 格式 | 描述 | 示例 |
 |------|------|------|------|
 | 鼠标移动 | `M,dx,dy` | 相对位移 | `M,10,5` |
-| 鼠标按键 | `B,button,state` | 按键/状态 | `B,1,1` (左键按下) |
-| 键盘按键 | `K,keycode,state` | 键码/状态 | `K,28,1` (Enter按下) |
-| 状态切换 | `S,state` | 1=REMOTE, 0=LOCAL | `S,1` |
+| 鼠标按键 | `B,button,state` | 按键/状态 | `B,1,1`（左键按下） |
+| 键盘按键 | `K,keycode,state` | 按键码/状态 | `K,28,1`（回车按下） |
+| 状态切换 | `S,state` | 1=远程, 0=本地 | `S,1` |
 
 **参数说明：**
-- `dx, dy`: 鼠标相对位移 (int16)
-- `button`: 1=左键, 2=右键, 3=中键
-- `state`: 1=按下, 0=释放
-- `keycode`: Linux evdev 键码 (如 28=Enter)
+- `dx, dy`：鼠标相对位移（int16）
+- `button`：1=左键，2=右键，3=中键
+- `state`：1=按下，0=释放
+- `keycode`：Linux evdev 按键码（例如：28=回车）
 
-### 4.2 ESP32 → Windows (USB HID)
+### 4.2 ESP32 → 目标计算机 (USB HID)
 
 **协议类型**: 标准 USB HID
 
-**键盘报告 (8字节)：**
+**键盘报告（8 字节）：**
 ```
-[0] 修饰键 (Ctrl/Shift/Alt/Win)
+[0] 修饰键（Ctrl/Shift/Alt/Win）
 [1] 保留
-[2-7] 6个按键码
+[2-7] 6 个按键码
 ```
 
-**鼠标报告 (4字节)：**
+**鼠标报告（4 字节）：**
 ```
-[0] 按键状态 (位掩码)
-[1] X 位移 (int8)
-[2] Y 位移 (int8)
-[3] 滚轮 (int8)
+[0] 按键状态（位掩码）
+[1] X 位移（int8）
+[2] Y 位移（int8）
+[3] 滚轮（int8）
 ```
 
 ---
@@ -361,31 +374,28 @@ void send_to_esp32(const char *fmt, ...) {
 
 #### 5.2.1 USB HID 初始化
 
-```cpp
-#include "USB.h"
-#include "USBHID.h"
+```c
+#include "tusb.h"
 
-USBHID HID;
-KeyboardReport keyboard;
-MouseReport mouse;
+void hid_init(void) {
+    tusb_init();
+}
 
-void setup() {
-    HID.begin();
-    USB.begin();
+void app_main(void) {
+    hid_init();
+    // 创建 UART 接收任务
+    // 创建 HID 发送任务
 }
 ```
 
 #### 5.2.2 UART 接收
 
-```cpp
-void loop() {
-    while (Serial2.available()) {
-        char c = Serial2.read();
-        if (c == '\n') {
-            process_command(buffer);
-            buffer = "";
-        } else {
-            buffer += c;
+```c
+void loop(void) {
+    while (uart_read_bytes(UART_NUM_0, buffer, len, 10 / portTICK_PERIOD_MS) > 0) {
+        if (buffer contains '\n') {
+            process_command(line);
+            clear_buffer();
         }
     }
 }
@@ -458,38 +468,41 @@ static void parse_command(const char *line) {
 ### 6.1 目录结构
 
 ```
-lankm/
+onekm/
 ├── src/
 │   ├── common/
-│   │   ├── protocol.h          # 消息定义 (Message struct)
+│   │   ├── protocol.h          # 消息定义（Message 结构体）
 │   │   └── protocol.c          # 消息构造函数
-│   ├── server/                 # Linux 服务器 (C语言)
-│   │   ├── main.c              # 主程序 + UART 发送
+│   ├── server/                 # Linux 服务器（C 语言）
+│   │   ├── main.c              # 主程序 + UART 传输
 │   │   ├── input_capture.c     # evdev 捕获
 │   │   ├── input_capture.h
-│   │   ├── state_machine.c     # 状态管理 (LOCAL/REMOTE)
-│   │   └── state_machine.h
-│   └── device/                 # ESP32-S3 固件 (ESP-IDF)
+│   │   ├── state_machine.c     # 状态管理（本地/远程）
+│   │   ├── state_machine.h
+│   │   ├── keyboard_state.c    # 键盘状态管理
+│   │   └── keyboard_state.h
+│   └── device/                 # ESP32-S3 固件（ESP-IDF）
 │       ├── main/
 │       │   ├── CMakeLists.txt
 │       │   ├── idf_component.yml
-│       │   ├── lankm_esp32.c    # 主程序（待实现）
+│       │   ├── onekm_esp32.c   # 主程序（UART0 GPIO43/44）
 │       │   ├── usb_descriptors.c # USB HID 描述符
-│       │   └── uart_parser.c    # UART 命令解析
+│       │   └── uart_parser.c   # UART 命令解析
 │       ├── CMakeLists.txt
 │       ├── sdkconfig.defaults
 │       └── README.md
 ├── docs/
-│   └── design/
-│       └── design.md           # 本设计文档
-├── CMakeLists.txt              # Linux 服务器构建
-├── README.md
-└── CLAUDE.md
+│   ├── design/
+│   │   └── design.md           # 本设计文档
+│   └── README.zh-CN.md         # 中文文档
+├── CMakeLists.txt              # Linux 服务器构建配置
+├── README.md                   # 英文文档
+└── CLAUDE.md                   # Claude Code 说明
 ```
 
 ### 6.2 ESP32-S3 源文件说明
 
-**待创建文件：** `src/device/main/lankm_esp32.c`
+**主要文件：** `src/device/main/onekm_esp32.c`
 
 主要函数：
 - `app_main()` - 初始化和任务创建
@@ -498,7 +511,7 @@ lankm/
 - `parse_command()` - 命令解析
 - 共享状态变量：`mouse_state`, `keyboard_state`
 
-**待创建文件：** `src/device/main/usb_descriptors.c`
+**主要文件：** `src/device/main/usb_descriptors.c`
 
 TinyUSB 描述符配置：
 - 设备描述符
@@ -506,70 +519,35 @@ TinyUSB 描述符配置：
 - HID 报告描述符（键盘 + 鼠标）
 - 字符串描述符
 
-**待创建文件：** `src/device/main/uart_parser.c`
+**主要文件：** `src/device/main/uart_parser.c`
 
 UART 命令解析：
 - 行缓冲处理
 - 协议解析 (M/B/K/S)
 - 状态更新与信号量触发
 
-### 6.3 Linux udev 规则
-
-创建 `/etc/udev/rules.d/99-lankm.rules`：
-
-```
-# 输入设备权限
-KERNEL=="event*", MODE="0666", GROUP="input"
-
-# UART 设备权限
-KERNEL=="ttyUSB*", MODE="0666", GROUP="dialout"
-KERNEL=="ttyAMA*", MODE="0666", GROUP="dialout"
-```
-
-应用规则：
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-### 6.4 运行权限
+### 6.3 运行权限
 
 **测试阶段（推荐）：**
 ```bash
 # 直接使用 sudo 运行（最简单，无需配置）
-sudo ./build/lankm-server /dev/ttyACM0
-```
-
-**长期使用：**
-```bash
-# 1. 设置 udev rules（只需一次）
-sudo cp 99-lankm.rules /etc/udev/rules.d/
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-
-# 2. 将用户加入组（只需一次）
-sudo usermod -a -G input,dialout $USER
-# 需要重新登录或重启
-
-# 3. 之后无需 sudo
-./build/lankm-server /dev/ttyACM0
+sudo ./build/onekm-server /dev/ttyACM0
 ```
 
 **说明：**
-- **测试阶段**：使用 `sudo` 即可，无需额外配置
-- **长期使用**：建议设置 udev rules，避免每次使用 sudo
-- **权限问题**：如果运行时报错 "Permission denied"，说明需要配置 udev rules 或使用 sudo
+- 测试阶段使用 `sudo` 即可，无需额外配置
+- 使用 `ls /dev/tty*` 验证设备连接
 
 ---
 
 ## 7. 性能指标
 
-| 指标 | 目标 | 说明 |
-|------|------|------|
-| 端到端延迟 | < 3ms | Linux捕获 → ESP32 → Windows |
+| 指标 | 目标值 | 描述 |
+|------|--------|------|
+| 端到端延迟 | < 3ms | Linux 捕获 → ESP32 → 目标计算机 |
 | CPU 占用 | < 1% | Linux 服务器 |
 | 内存占用 | < 5MB | Linux 服务器 |
-| ESP32 处理 | < 1ms | UART解析 + HID发送 |
+| ESP32 处理 | < 1ms | UART 解析 + HID 传输 |
 
 ---
 
@@ -580,7 +558,7 @@ sudo usermod -a -G input,dialout $USER
 | 场景 | 行为 |
 |------|------|
 | UART 断开 | 停止捕获，提示错误 |
-| 设备无响应 | 自动回到 LOCAL 模式 |
+| 设备无响应 | 自动回到 LOCAL 模式，强制释放所有按键 |
 | 按键卡住 | 状态切换时强制释放 |
 
 ### 8.2 ESP32-S3
@@ -607,7 +585,7 @@ cmake ..
 make
 
 # 运行
-sudo ./lankm-server /dev/ttyACM0
+sudo ./onekm-server /dev/ttyACM0
 ```
 
 ### 9.2 ESP32-S3 (ESP-IDF)
@@ -628,16 +606,16 @@ source $IDF_PATH/export.sh
 ```bash
 cd src/device
 
-# 配置项目
-idf.py menuconfig
+# 配置目标芯片
+idf.py set-target esp32s3
 
 # 编译
 idf.py build
 
-# 烧录到 ESP32-S3 (替换为实际端口)
+# 烧录到 ESP32-S3（替换为实际端口）
 idf.py -p /dev/ttyACM0 flash
 
-# 监视输出
+# 监控输出（可选，用于调试）
 idf.py -p /dev/ttyACM0 monitor
 ```
 
@@ -645,9 +623,6 @@ idf.py -p /dev/ttyACM0 monitor
 - Board: ESP32-S3 Dev Module
 - USB CDC On Boot: Enabled
 - USB OTG: Enabled
-- UART2: GPIO16(RX), GPIO17(TX)
-
-**注意：** 示例程序 `tusb_hid_example_main.c` 仅用于验证 HID 功能，实际项目需要实现 UART 接收逻辑。
 
 ---
 
@@ -666,7 +641,7 @@ idf.py -p /dev/ttyACM0 monitor
    - ESP32 回显验证
 
 2. **HID 功能测试**
-   - ESP32 连接 Windows
+   - ESP32 连接目标计算机
    - 验证键盘/鼠标识别
 
 3. **端到端测试**
@@ -679,14 +654,14 @@ idf.py -p /dev/ttyACM0 monitor
 
 ### 11.1 可能的扩展
 
-- **多设备支持**: 多个 ESP32 连接不同 Windows 机器
+- **多设备支持**: 多个 ESP32 连接不同目标计算机
 - **配置界面**: Web UI 配置参数
 - **状态指示**: LED 指示当前模式
 - **日志系统**: 详细日志记录
 
 ### 11.2 当前限制
 
-- 单向通信 (Linux → Windows)
+- 单向通信（Linux → 目标计算机）
 - 不支持剪贴板共享
 - 不支持文件传输
 
@@ -696,20 +671,20 @@ idf.py -p /dev/ttyACM0 monitor
 
 ### 12.1 核心创新
 
-使用 **ESP32-S3 的 USB HID 功能** 替代 Windows 软件注入，彻底解决了：
-- Windows 输入拦截问题
-- 兼容性问题
-- 安全性问题
+使用 **ESP32-S3 的 USB HID 功能** 替代软件注入，彻底解决了：
+- 操作系统输入拦截问题
+- 跨平台兼容性问题（在 Windows/Linux/macOS 上通用）
+- 安全性问题（无需运行注入软件）
 
 ### 12.2 实施要点
 
 1. **Linux 端**: 保持现有 evdev 捕获，修改发送目标为 UART
 2. **ESP32 端**: 实现 UART 接收 + USB HID 注入
-3. **Windows 端**: 零改动，即插即用
+3. **目标计算机端**: 零改动，即插即用
 
 ### 12.3 预期效果
 
-- ✅ 无需在 Windows 安装任何软件
-- ✅ 绕过所有安全软件的拦截
-- ✅ 支持所有 Windows 应用和游戏
-- ✅ 极低延迟，体验流畅
+- 目标计算机端无需安装任何软件
+- 绕过所有安全软件的拦截
+- 支持所有操作系统和应用
+- 极低延迟，体验流畅

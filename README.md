@@ -1,8 +1,8 @@
-# LanKM - LAN Keyboard & Mouse Controller (Hardware-based)
+# OneKM - LAN Keyboard & Mouse Controller (Hardware-based)
 
 [中文文档](docs/README.zh-CN.md)
 
-LanKM (LAN Keyboard & Mouse) is a lightweight LAN keyboard and mouse sharing system implemented with a hardware-based solution for cross-platform control.
+OneKM (LAN Keyboard & Mouse) is a lightweight LAN keyboard and mouse sharing system implemented with a hardware-based solution for cross-platform control.
 
 **Note:** Currently, only Linux is supported as the host.
 
@@ -32,7 +32,7 @@ LanKM (LAN Keyboard & Mouse) is a lightweight LAN keyboard and mouse sharing sys
 
 | Hardware | Description | Purpose |
 |----------|-------------|---------|
-| **Control Computer** | Linux PC (server runs on Linux only) | Runs lankm-server to capture input |
+| **Control Computer** | Linux PC (server runs on Linux only) | Runs onekm-server to capture input |
 | ESP32-S3-DevKitC-1 Development Board | With native USB OTG | HID device emulation |
 | USB Cable x2 | Micro USB / Type-C | Connect ESP32 to target computer and Linux server |
 
@@ -106,7 +106,7 @@ Use `ls /dev/tty*` to verify device connection.
 
 ```bash
 # Requires root privileges to access input devices
-sudo ./build/lankm-server /dev/ttyACM0
+sudo ./build/onekm-server /dev/ttyACM0
 ```
 
 ### 3. Operation Instructions
@@ -160,7 +160,7 @@ sudo ./build/lankm-server /dev/ttyACM0
 ## Project Structure
 
 ```
-lankm/
+onekm/
 ├── src/
 │   ├── common/
 │   │   ├── protocol.h          # Message definitions (Message struct)
@@ -175,7 +175,7 @@ lankm/
 │       ├── main/
 │       │   ├── CMakeLists.txt
 │       │   ├── idf_component.yml
-│       │   ├── lankm_esp32.c   # Main program (UART0 GPIO43/44)
+│       │   ├── onekm_esp32.c   # Main program (UART0 GPIO43/44)
 │       │   ├── usb_descriptors.c # USB HID descriptors
 │       │   └── uart_parser.c   # UART command parsing
 │       ├── CMakeLists.txt
