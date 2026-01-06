@@ -48,7 +48,6 @@ int init_input_capture(void) {
             continue;
         }
 
-        // Only add keyboard and mouse devices
         if (libevdev_has_event_type(dev, EV_KEY) ||
             libevdev_has_event_type(dev, EV_REL)) {
             devices[num_devices++] = dev;
@@ -73,7 +72,7 @@ int init_input_capture(void) {
 
 void set_device_grab(int grab) {
     if (grab_devices == grab) {
-        return; // Already in the desired state
+        return;
     }
 
     grab_devices = grab;
@@ -92,28 +91,26 @@ void set_device_grab(int grab) {
     }
 }
 
+int get_device_fds(int *fds, int max_fds) {
+    int count = num_devices < max_fds ? num_devices : max_fds;
+    for (int i = 0; i < count; i++) {
+        fds[i] = libevdev_get_fd(devices[i]);
+    }
+    return count;
+}
+
 int capture_input(InputEvent *event) {
     int rc;
     struct input_event ev;
-    // const int WHEEL_CODE = 0x08; // REL_WHEEL value
-    // const int HWHEEL_CODE = 0x06; // REL_HWHEEL value
 
     for (int i = 0; i < num_devices; i++) {
         rc = libevdev_next_event(devices[i], LIBEVDEV_READ_FLAG_NORMAL, &ev);
 
         if (rc == LIBEVDEV_READ_STATUS_SUCCESS) {
-            // Log wheel events for debugging
-            // if (ev.type == EV_REL && (ev.code == WHEEL_CODE || ev.code == HWHEEL_CODE)) {
-            //     printf("[CAPTURE] Wheel event detected: type=%d, code=%d, value=%d from device %s\n",
-            //            ev.type, ev.code, ev.value, libevdev_get_name(devices[i]));
-            // }
-
-            // Filter out SYN_REPORT and other non-keyboard/non-mouse events
             if (ev.type == EV_SYN || ev.type == EV_MSC) {
                 continue;
             }
 
-            // Only accept keyboard and mouse events
             if (ev.type != EV_KEY && ev.type != EV_REL) {
                 continue;
             }
@@ -122,32 +119,21 @@ int capture_input(InputEvent *event) {
             event->code = ev.code;
             event->value = ev.value;
 
-            // Log all captured events for debugging
-            // if (ev.type == EV_REL) {
-            //     printf("[CAPTURE] EV_REL event: code=%d, value=%d\n", ev.code, ev.value);
-            // } else if (ev.type == EV_KEY && (ev.code == BTN_LEFT || ev.code == BTN_RIGHT || ev.code == BTN_MIDDLE)) {
-            //     printf("[CAPTURE] Mouse button event: code=%d, value=%d\n", ev.code, ev.value);
-            // }
-
             return 0;
         } else if (rc == -EAGAIN) {
-            // No events available on this device
             continue;
         } else if (rc < 0) {
-            // Error reading from device
             if (rc == -ENODEV) {
-                // Device was removed
                 printf("Device removed\n");
             }
             continue;
         }
     }
 
-    return -1; // No events available
+    return -1;
 }
 
 void cleanup_input_capture(void) {
-    // Ensure devices are ungrabbed before cleanup
     set_device_grab(0);
 
     for (int i = 0; i < num_devices; i++) {

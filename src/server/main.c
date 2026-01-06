@@ -13,13 +13,11 @@
 #include <time.h>
 #include <sched.h>
 #include <pthread.h>
+#include <poll.h>
 #include "common/protocol.h"
 #include "input_capture.h"
 #include "state_machine.h"
 #include "keyboard_state.h"
-
-// Use KEY_PAUSE (Pause/Break) for mode switching - rare key, not used in applications
-// Note: KEY_PAUSE is defined in linux/input-event-codes.h as 119
 
 static int running = 1;
 static int uart_fd = -1;
@@ -46,11 +44,9 @@ void signal_handler(int sig) {
     }
 }
 
-// Emergency cleanup handler - called on abnormal termination
 void emergency_cleanup(void) {
     printf("\nEmergency cleanup - releasing all input devices...\n");
     restore_terminal_mode();
-    // Force ungrab all devices
     set_device_grab(0);
     cleanup_input_capture();
 
@@ -59,7 +55,6 @@ void emergency_cleanup(void) {
     }
 }
 
-// Open and configure UART device
 int init_uart(const char *port, int baud_rate) {
     struct termios tty;
     speed_t baud;
@@ -70,7 +65,6 @@ int init_uart(const char *port, int baud_rate) {
         return -1;
     }
 
-    // Convert baud rate to termios constant
     switch (baud_rate) {
         case 230400: baud = B230400; break;
         case 460800: baud = B460800; break;
@@ -78,43 +72,35 @@ int init_uart(const char *port, int baud_rate) {
         default: baud = B115200; break;
     }
 
-    // Get current terminal settings
     if (tcgetattr(uart_fd, &tty) != 0) {
         perror("tcgetattr failed");
         close(uart_fd);
         return -1;
     }
 
-    // Set baud rate
     cfsetospeed(&tty, baud);
     cfsetispeed(&tty, baud);
 
-    // 8N1 configuration
-    tty.c_cflag &= ~PARENB;        // No parity
-    tty.c_cflag &= ~CSTOPB;        // 1 stop bit
+    tty.c_cflag &= ~PARENB;
+    tty.c_cflag &= ~CSTOPB;
     tty.c_cflag &= ~CSIZE;
-    tty.c_cflag |= CS8;            // 8 data bits
-    tty.c_cflag &= ~CRTSCTS;       // No hardware flow control
-    tty.c_cflag |= CREAD | CLOCAL; // Enable receiver, ignore modem control
+    tty.c_cflag |= CS8;
+    tty.c_cflag &= ~CRTSCTS;
+    tty.c_cflag |= CREAD | CLOCAL;
 
-    // Raw mode
     tty.c_lflag &= ~ICANON;
     tty.c_lflag &= ~ECHO;
     tty.c_lflag &= ~ECHOE;
     tty.c_lflag &= ~ECHONL;
     tty.c_lflag &= ~ISIG;
 
-    // Disable software flow control
     tty.c_iflag &= ~(IXON | IXOFF | IXANY);
 
-    // Raw output
     tty.c_oflag &= ~OPOST;
 
-    // Timeout settings
     tty.c_cc[VMIN] = 0;
-    tty.c_cc[VTIME] = 10;  // 1 second timeout
+    tty.c_cc[VTIME] = 10;
 
-    // Apply settings
     if (tcsetattr(uart_fd, TCSANOW, &tty) != 0) {
         perror("tcsetattr failed");
         close(uart_fd);
@@ -125,30 +111,8 @@ int init_uart(const char *port, int baud_rate) {
     return 0;
 }
 
-// Send binary message to ESP32
 void send_message(Message *msg) {
     if (uart_fd >= 0 && msg) {
-
-        // switch (msg->type) {
-        //     case 1: // MSG_MOUSE_MOVE
-        //         printf(" dx=%d dy=%d", msg->data.mouse_move.dx, msg->data.mouse_move.dy);
-        //         break;
-        //     case 2: // MSG_MOUSE_BUTTON
-        //         printf(" button=%d state=%d", msg->data.mouse_button.button, msg->data.mouse_button.state);
-        //         break;
-        //     case 3: // MSG_KEYBOARD_REPORT
-        //         printf(" keyboard modifiers=0x%02x keys=[%02x %02x %02x %02x %02x %02x]",
-        //                msg->data.keyboard.modifiers,
-        //                msg->data.keyboard.keys[0], msg->data.keyboard.keys[1],
-        //                msg->data.keyboard.keys[2], msg->data.keyboard.keys[3],
-        //                msg->data.keyboard.keys[4], msg->data.keyboard.keys[5]);
-        //         break;
-        //     case 4: // MSG_SWITCH
-        //         printf(" switch state=%d", msg->data.control.state);
-        //         break;
-        // }
-        // printf("\n");
-
         int sent = write(uart_fd, msg, sizeof(Message));
         if (sent != sizeof(Message)) {
             fprintf(stderr, "UART write error: %s\n", strerror(errno));
@@ -159,9 +123,8 @@ void send_message(Message *msg) {
 int main(int argc, char *argv[]) {
     Message msg;
     const char *uart_port = "/dev/ttyACM0";
-    int baud_rate = 230400;  // Default to 230400
+    int baud_rate = 230400;
 
-    // Parse command line arguments
     if (argc > 1) {
         uart_port = argv[1];
     }
@@ -177,28 +140,17 @@ int main(int argc, char *argv[]) {
     printf("OneKM Server v2.0.0 (UART Mode)\n");
     printf("Using UART device: %s at %d baud\n", uart_port, baud_rate);
 
-    // Setup signal handlers
-    // Note: SIGINT (Ctrl+C) is NOT handled globally to avoid conflicts with other terminals
-    // Instead, Ctrl+C is detected via keyboard events in LOCAL mode only
-    // signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
-
-    // Register emergency cleanup
     atexit(emergency_cleanup);
 
-    // Initialize input capture
     if (init_input_capture() != 0) {
         fprintf(stderr, "Failed to initialize input capture\n");
         return 1;
     }
 
-    // Initialize state machine
     init_state_machine();
-
-    // Initialize keyboard state
     keyboard_state_init();
 
-    // Initialize UART
     if (init_uart(uart_port, baud_rate) != 0) {
         fprintf(stderr, "Failed to initialize UART\n");
         cleanup_input_capture();
@@ -211,125 +163,122 @@ int main(int argc, char *argv[]) {
     set_raw_terminal_mode();
     printf("Terminal set to raw mode\n");
 
-    // Main loop - optimized for low latency
+#define MAX_DEVICES 10
+
     HIDKeyboardReport keyboard_report;
-    int last_report_sent = 0;
 
-    // Mouse movement heartbeat timer for LOCAL mode (prevents sleep without key press issues)
     time_t last_heartbeat = 0;
-    const time_t heartbeat_interval = 30; // Send heartbeat every 30 seconds
-    int heartbeat_mouse_moved = 0; // Counter for mouse movement duration
+    const time_t heartbeat_interval = 30;
+    int heartbeat_mouse_moved = 0;
 
-    // Mouse movement flush timer
     struct timespec last_mouse_flush = {0, 0};
 
+    int device_fds[MAX_DEVICES];
+    int num_fds = get_device_fds(device_fds, MAX_DEVICES);
+
+    struct pollfd pollfds[MAX_DEVICES];
+    for (int i = 0; i < num_fds; i++) {
+        pollfds[i].fd = device_fds[i];
+        pollfds[i].events = POLLIN;
+    }
+
     while (running) {
-        // Check if exit was requested (e.g., Ctrl+C in LOCAL mode)
         if (should_exit()) {
             printf("Exit requested, shutting down...\n");
             break;
         }
 
         int events_processed = 0;
-        struct timespec current_ts;
-        clock_gettime(CLOCK_MONOTONIC, &current_ts);
+        ControlState current_state = get_current_state();
 
-        // Check for heartbeat in LOCAL mode
-        if (get_current_state() == STATE_LOCAL) {
+        if (current_state == STATE_LOCAL) {
             time_t current_time = time(NULL);
 
-            if (last_heartbeat == 0) {
-                // Initialize heartbeat timer
-                last_heartbeat = current_time;
-            } else if (heartbeat_mouse_moved > 0) {
-
-                // Mouse move back and forth
+            if (heartbeat_mouse_moved > 0) {
                 int xy_move = (heartbeat_mouse_moved % 2 == 0) ? 1 : -1;
-
-                // Mouse is currently moving (send small movements over time)
                 heartbeat_mouse_moved--;
-
-                // Send small mouse movement
-                msg_mouse_move(&msg, xy_move, xy_move); // Move 1px diagonal
+                msg_mouse_move(&msg, xy_move, xy_move);
                 send_message(&msg);
-                events_processed++; // Count this as activity to avoid sleep
+                events_processed++;
 
                 if (heartbeat_mouse_moved == 0) {
-                    // Movement finished
                     printf("[HEARTBEAT] Mouse movement heartbeat sent\n");
                 }
+            } else if (last_heartbeat == 0) {
+                last_heartbeat = current_time;
             } else if (current_time - last_heartbeat >= heartbeat_interval) {
-                // Time to send heartbeat - move mouse in a small square pattern
                 printf("[HEARTBEAT] Starting mouse movement heartbeat\n");
-                heartbeat_mouse_moved = 5; // Send 5 small movements
+                heartbeat_mouse_moved = 5;
                 last_heartbeat = current_time;
                 events_processed++;
             }
         }
 
-        // Capture and process multiple events in quick succession
-        for (int i = 0; i < 20; i++) {
-            InputEvent event;
-            int captured = capture_input(&event);
-            if (captured == 0) {
-                // printf("[MAIN] Event captured: type=%d, code=%d, value=%d\n", event.type, event.code, event.value);
+        if (current_state == STATE_REMOTE) {
+            struct timespec current_ts;
+            clock_gettime(CLOCK_MONOTONIC, &current_ts);
 
-                // Check if switching from LOCAL to REMOTE with pending mouse movement
-                if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1 &&
-                    get_current_state() == STATE_LOCAL && heartbeat_mouse_moved > 0) {
-                    // We have pending mouse movements, just clear the counter
-                    printf("[HEARTBEAT] Canceling pending mouse movements before mode switch\n");
-                    heartbeat_mouse_moved = 0;
-                }
+            for (int i = 0; i < 20; i++) {
+                InputEvent event;
+                int captured = capture_input(&event);
+                if (captured == 0) {
+                    if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1 &&
+                        get_current_state() == STATE_LOCAL && heartbeat_mouse_moved > 0) {
+                        printf("[HEARTBEAT] Canceling pending mouse movements before mode switch\n");
+                        heartbeat_mouse_moved = 0;
+                    }
 
-                // Process through state machine
-                if (process_event(&event, &msg)) {
-                    // Send message
-                    send_message(&msg);
-                    events_processed++;
-                } else if (get_current_state() == STATE_REMOTE && event.type == EV_KEY) {
-                    // Process keyboard events in REMOTE mode
-                    if (keyboard_state_process_key(event.code, event.value, &keyboard_report)) {
-                        // Keyboard state changed, send HID report
-                        msg_keyboard_report(&msg, &keyboard_report);
+                    if (process_event(&event, &msg)) {
                         send_message(&msg);
-                        last_report_sent = 1;
+                        events_processed++;
+                    } else if (get_current_state() == STATE_REMOTE && event.type == EV_KEY) {
+                        if (keyboard_state_process_key(event.code, event.value, &keyboard_report)) {
+                            msg_keyboard_report(&msg, &keyboard_report);
+                            send_message(&msg);
+                            events_processed++;
+                        }
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            if (events_processed == 0) {
+                long time_since_flush = (current_ts.tv_sec - last_mouse_flush.tv_sec) * 1000000 +
+                                       (current_ts.tv_nsec - last_mouse_flush.tv_nsec) / 1000;
+                if (time_since_flush > 5000) {
+                    if (flush_pending_mouse_movement(&msg)) {
+                        send_message(&msg);
                         events_processed++;
                     }
+                    last_mouse_flush = current_ts;
                 }
             } else {
-                break; // No more events available
-            }
-        }
-
-        if (get_current_state() == STATE_REMOTE && !last_report_sent) {
-        }
-        last_report_sent = 0;
-
-        // Flush pending mouse movement if no events for a while
-        if (events_processed == 0) {
-            // Check if we should flush pending mouse movement (after 5ms of inactivity)
-            long time_since_flush = (current_ts.tv_sec - last_mouse_flush.tv_sec) * 1000000 +
-                                   (current_ts.tv_nsec - last_mouse_flush.tv_nsec) / 1000;
-            if (time_since_flush > 5000) { // 5ms
-                if (flush_pending_mouse_movement(&msg)) {
-                    send_message(&msg);
-                    events_processed++; // Count this as activity to avoid sleep
-                }
                 last_mouse_flush = current_ts;
             }
         } else {
-            // Update flush timer when events are processed
-            last_mouse_flush = current_ts;
+            if (poll(pollfds, num_fds, 1) > 0) {
+                InputEvent event;
+                if (capture_input(&event) == 0) {
+                    if (event.type == EV_KEY && event.code == KEY_PAUSE && event.value == 1) {
+                        process_event(&event, &msg);
+                    }
+                }
+            }
         }
 
-        // If no events were processed, sleep briefly to avoid busy-waiting
-        if (events_processed == 0) {
-            usleep(100); // 0.1ms sleep when idle
+        int sleep_time;
+        if (current_state == STATE_LOCAL) {
+            sleep_time = heartbeat_mouse_moved > 0 ? 5 : 50;
+        } else {
+            sleep_time = events_processed > 0 ? 0 : 1;
+        }
+
+        if (events_processed == 0 && sleep_time > 0) {
+            usleep(sleep_time * 1000);
         }
     }
 
-    // Cleanup
     cleanup_state_machine();
     cleanup_input_capture();
 

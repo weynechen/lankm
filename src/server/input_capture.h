@@ -11,6 +11,7 @@ typedef struct {
 
 int init_input_capture(void);
 int capture_input(InputEvent *event);
+int get_device_fds(int *fds, int max_fds);
 void set_device_grab(int grab);
 void cleanup_input_capture(void);
 
