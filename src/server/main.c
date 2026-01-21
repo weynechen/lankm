@@ -18,6 +18,7 @@
 #include "input_capture.h"
 #include "state_machine.h"
 #include "keyboard_state.h"
+#include "key_sync.h"
 
 static int running = 1;
 static int uart_fd = -1;
@@ -48,6 +49,7 @@ void emergency_cleanup(void) {
     printf("\nEmergency cleanup - releasing all input devices...\n");
     restore_terminal_mode();
     set_device_grab(0);
+    key_sync_cleanup();
     cleanup_input_capture();
 
     if (uart_fd >= 0) {
@@ -151,8 +153,14 @@ int main(int argc, char *argv[]) {
     init_state_machine();
     keyboard_state_init();
 
+    if (key_sync_init() != 0) {
+        fprintf(stderr, "Warning: Failed to initialize key sync module\n");
+        fprintf(stderr, "Key synchronization will be disabled\n");
+    }
+
     if (init_uart(uart_port, baud_rate) != 0) {
         fprintf(stderr, "Failed to initialize UART\n");
+        key_sync_cleanup();
         cleanup_input_capture();
         return 1;
     }
@@ -280,6 +288,7 @@ int main(int argc, char *argv[]) {
     }
 
     cleanup_state_machine();
+    key_sync_cleanup();
     cleanup_input_capture();
 
     if (uart_fd >= 0) {

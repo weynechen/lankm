@@ -7,6 +7,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <dirent.h>
+#include <sys/ioctl.h>
+#include <linux/input.h>
 #include <libevdev/libevdev.h>
 
 #define MAX_DEVICES 10
@@ -131,6 +133,39 @@ int capture_input(InputEvent *event) {
     }
 
     return -1;
+}
+
+int get_hardware_keyboard_state(uint8_t key_states[32]) {
+    if (!key_states) {
+        return -1;
+    }
+
+    // Clear the output buffer
+    memset(key_states, 0, 32);
+
+    // Query all keyboard devices and merge their states
+    for (int i = 0; i < num_devices; i++) {
+        // Only check devices with keyboard capability
+        if (!libevdev_has_event_type(devices[i], EV_KEY)) {
+            continue;
+        }
+
+        int fd = libevdev_get_fd(devices[i]);
+        if (fd < 0) {
+            continue;
+        }
+
+        // Query the current key state from kernel
+        uint8_t device_key_states[32] = {0};
+        if (ioctl(fd, EVIOCGKEY(sizeof(device_key_states)), device_key_states) >= 0) {
+            // Merge this device's key states (OR operation)
+            for (int j = 0; j < 32; j++) {
+                key_states[j] |= device_key_states[j];
+            }
+        }
+    }
+
+    return 0;
 }
 
 void cleanup_input_capture(void) {

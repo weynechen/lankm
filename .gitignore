@@ -59,3 +59,4 @@ windows_result.txt
 *.swp
 
 .stignore
+.cache

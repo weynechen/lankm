@@ -10,6 +10,13 @@ int keyboard_state_process_key(uint16_t linux_keycode, uint8_t value, HIDKeyboar
 
 void keyboard_state_reset(HIDKeyboardReport *report);
 
+// Get current software keyboard state
+// Returns pointer to internal state (do not modify)
+const HIDKeyboardReport* keyboard_state_get_current(void);
+
+// Check if a specific Linux keycode is pressed in software state
+int keyboard_state_is_key_pressed(uint16_t linux_keycode);
+
 #define MODIFIER_LEFT_CTRL   0x01
 #define MODIFIER_LEFT_SHIFT  0x02
 #define MODIFIER_LEFT_ALT    0x04

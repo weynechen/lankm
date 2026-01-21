@@ -1,9 +1,12 @@
 #include "state_machine.h"
 #include "input_capture.h"
+#include "keyboard_state.h"
+#include "key_sync.h"
 #include "common/protocol.h"
 #include <stdio.h>
 #include <linux/input.h>
 #include <time.h>
+#include <unistd.h>
 
 static ControlState current_state = STATE_LOCAL;
 static int exit_requested = 0;
@@ -21,6 +24,21 @@ void init_state_machine(void) {
     printf("State machine initialized in LOCAL mode\n");
     printf("Press PAUSE/Break to toggle between LOCAL and REMOTE control\n");
     printf("Press PAUSE/Break 3 times within 2 seconds to exit\n");
+}
+
+void reset_keyboard_on_switch(void) {
+    printf("[SYNC] Synchronizing keyboard state with hardware...\n");
+    
+    // Perform key synchronization
+    int synced = key_sync_on_mode_switch();
+    
+    if (synced < 0) {
+        fprintf(stderr, "[SYNC] Failed to synchronize keyboard state\n");
+    } else if (synced > 0) {
+        printf("[SYNC] Successfully synchronized %d key(s)\n", synced);
+        // Give system time to process the injected events
+        usleep(10000);
+    }
 }
 
 static int pending_dx = 0;
@@ -91,6 +109,10 @@ int process_event(const InputEvent *event, Message *msg) {
                 // Switch to local control
                 current_state = STATE_LOCAL;
                 set_device_grab(0); // Ungrab devices so input affects local system again
+                
+                // Synchronize keyboard state after ungrab
+                reset_keyboard_on_switch();
+                
                 msg_switch(msg, 0); // 0 = switch to local
                 printf("Switching to LOCAL control, sending SWITCH message\n");
                 return 1; // Always return 1 to indicate message was prepared

@@ -52,6 +52,7 @@ if(CAN_BUILD)
         src/server/input_capture.c
         src/server/state_machine.c
         src/server/keyboard_state.c
+        src/server/key_sync.c
         ${COMMON_SOURCES}
     )
 

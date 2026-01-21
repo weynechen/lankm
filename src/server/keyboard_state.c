@@ -220,3 +220,41 @@ void keyboard_state_reset(HIDKeyboardReport *report) {
         memcpy(report, &current_report, sizeof(HIDKeyboardReport));
     }
 }
+
+const HIDKeyboardReport* keyboard_state_get_current(void) {
+    return &current_report;
+}
+
+int keyboard_state_is_key_pressed(uint16_t linux_keycode) {
+    if (linux_keycode >= 256) {
+        return 0;
+    }
+
+    uint8_t hid_keycode = linux_to_hid_keymap[linux_keycode];
+    if (hid_keycode == 0) {
+        return 0;
+    }
+
+    // Check modifiers
+    switch (hid_keycode) {
+        case 224:  // LCtrl
+            return (current_report.modifiers & MODIFIER_LEFT_CTRL) != 0;
+        case 228:  // RCtrl
+            return (current_report.modifiers & MODIFIER_RIGHT_CTRL) != 0;
+        case 225:  // LShift
+            return (current_report.modifiers & MODIFIER_LEFT_SHIFT) != 0;
+        case 229:  // RShift
+            return (current_report.modifiers & MODIFIER_RIGHT_SHIFT) != 0;
+        case 226:  // LAlt
+            return (current_report.modifiers & MODIFIER_LEFT_ALT) != 0;
+        case 230:  // RAlt
+            return (current_report.modifiers & MODIFIER_RIGHT_ALT) != 0;
+        case 227:  // LGUI (Left Win key)
+            return (current_report.modifiers & MODIFIER_LEFT_GUI) != 0;
+        case 231:  // RGUI (Right Win key)
+            return (current_report.modifiers & MODIFIER_RIGHT_GUI) != 0;
+        default:
+            // Check regular keys
+            return find_key_in_report(hid_keycode) >= 0;
+    }
+}
